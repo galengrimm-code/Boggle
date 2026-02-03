@@ -75,18 +75,31 @@
       });
     }
 
-    // Generate random board (for practice mode)
-    function generateRandomBoard() {
+    // Generate board from seed (for practice mode sharing)
+    function generateSeededBoard(seed) {
+      let currentSeed = seed;
       const shuffledDice = [...BOGGLE_DICE];
       for (let i = shuffledDice.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(seededRandom(currentSeed++) * (i + 1));
         [shuffledDice[i], shuffledDice[j]] = [shuffledDice[j], shuffledDice[i]];
       }
       return shuffledDice.map(die => {
-        const faceIndex = Math.floor(Math.random() * 6);
+        const faceIndex = Math.floor(seededRandom(currentSeed++) * 6);
         let letter = die[faceIndex];
         return letter === 'Q' ? 'Qu' : letter;
       });
+    }
+
+    // Generate random 5-digit code
+    function generatePracticeCode() {
+      return Math.floor(10000 + Math.random() * 90000);
+    }
+
+    // Generate random board (for practice mode)
+    function generateRandomBoard() {
+      const code = generatePracticeCode();
+      state.practiceCode = code;
+      return generateSeededBoard(code);
     }
 
     // Get today's date (local timezone - puzzle resets at local midnight)
@@ -199,7 +212,8 @@
       pendingTile: null,
       pendingTimeout: null,
       possibleWords: null,
-      practiceMode: false
+      practiceMode: false,
+      practiceCode: null
     };
 
     // Initialize board
@@ -706,6 +720,28 @@
       render();
     }
 
+    // Load board from code
+    function loadBoardFromCode() {
+      const codeInput = document.getElementById('practiceCodeInput');
+      const code = parseInt(codeInput.value.trim());
+      if (code >= 10000 && code <= 99999) {
+        state.practiceCode = code;
+        state.board = generateSeededBoard(code);
+        state.possibleWords = null;
+        render();
+      } else {
+        showMessage('Enter a 5-digit code');
+      }
+    }
+
+    // Copy practice code
+    function copyPracticeCode() {
+      if (state.practiceCode) {
+        navigator.clipboard.writeText(state.practiceCode.toString());
+        showMessage('Code copied!');
+      }
+    }
+
     // Play again (practice mode)
     function playAgain() {
       state.board = generateRandomBoard();
@@ -810,8 +846,8 @@
         `;
       }
 
-      // Game Board (only show during playing and finished)
-      if (state.gameState === 'playing' || state.gameState === 'finished') {
+      // Game Board (show during playing, finished, and ready state in practice mode)
+      if (state.gameState === 'playing' || state.gameState === 'finished' || (state.gameState === 'ready' && state.practiceMode)) {
         html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 select-none board-container"><svg class="swipe-svg" id="swipeSvg"></svg><div class="grid grid-cols-4 gap-2">`;
 
         state.board.forEach((letter, index) => {
@@ -876,6 +912,24 @@
         html += `
           <div class="bg-white/10 backdrop-blur rounded-2xl p-6 mb-4">
             <p class="text-green-100 text-center mb-6">Find as many words as you can in 3 minutes!<br/>Select adjacent letters to form words.</p>
+
+            ${state.practiceMode ? `
+            <div class="mb-6 text-center">
+              <p class="text-white/70 text-sm mb-2">Board Code</p>
+              <div class="flex justify-center items-center gap-2 mb-3">
+                <span class="text-3xl font-mono font-bold text-yellow-300 tracking-wider">${state.practiceCode}</span>
+                <button onclick="copyPracticeCode()" class="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm transition-colors">Copy</button>
+              </div>
+              <p class="text-white/50 text-xs mb-3">Share this code so others get the same board</p>
+              <div class="flex justify-center items-center gap-2">
+                <input type="text" id="practiceCodeInput" placeholder="Enter code" maxlength="5"
+                  class="w-24 px-3 py-2 rounded-lg text-center font-mono text-lg outline-none"
+                  onkeypress="if(event.key==='Enter')loadBoardFromCode()" />
+                <button onclick="loadBoardFromCode()" class="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm transition-colors">Load</button>
+                <button onclick="state.board = generateRandomBoard(); render();" class="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm transition-colors">New</button>
+              </div>
+            </div>
+            ` : ''}
 
             <div class="mb-6">
               <p class="text-white/70 text-sm text-center mb-3">Input Method</p>
@@ -1008,6 +1062,9 @@
     window.clearSelection = clearSelection;
     window.setInputMode = setInputMode;
     window.shareResults = shareResults;
+    window.loadBoardFromCode = loadBoardFromCode;
+    window.copyPracticeCode = copyPracticeCode;
+    window.generateRandomBoard = generateRandomBoard;
 
     // Initial render
     render();
