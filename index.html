@@ -18,7 +18,7 @@
     // ============================================
     // CONFIGURATION - UPDATE THIS URL
     // ============================================
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwxz9yoZX0R88hLvNifVO-LIFhMJJ27IqubTyTfEVvwsJwlLfOvrIVp5GotEIp1jYJN0g/exec';
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGQanlr2kHXtHL1MK59lymysbfvyerxuEd-XWA3XnQC4vkEKxnqR8mW0ti_m1g8K88hg/exec';
     // ============================================
 
     // Boggle dice
@@ -161,7 +161,7 @@
     async function checkPlayer(name) {
       try {
         const url = `${SCRIPT_URL}?action=check&player=${encodeURIComponent(name)}&date=${state.todayDate}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
         return await response.json();
       } catch (e) {
         console.error('API error:', e);
@@ -172,7 +172,7 @@
     async function saveScore(name, score, words) {
       try {
         const url = `${SCRIPT_URL}?action=save&player=${encodeURIComponent(name)}&date=${state.todayDate}&score=${score}&words=${words}`;
-        await fetch(url);
+        await fetch(url, { redirect: 'follow', mode: 'cors' });
       } catch (e) {
         console.error('API error:', e);
       }
@@ -181,7 +181,7 @@
     async function getLeaderboard() {
       try {
         const url = `${SCRIPT_URL}?action=leaderboard&date=${state.todayDate}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
         const data = await response.json();
         return data.leaderboard || [];
       } catch (e) {
@@ -358,9 +358,9 @@
     // Login
     async function handleLogin() {
       const nameInput = document.getElementById('playerName');
-      const name = nameInput.value.trim();
+      const name = nameInput.value.trim().toLowerCase();
       if (!name) return;
-      
+
       state.playerName = name;
       localStorage.setItem('boggle_player', name);
       
