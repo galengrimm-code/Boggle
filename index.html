@@ -849,11 +849,19 @@
         const possibleCount = state.possibleWords ? state.possibleWords.length : null;
         const percentFound = possibleCount ? Math.round((state.foundWords.length / possibleCount) * 100) : null;
 
+        // Score message
+        let scoreMessage = '';
+        if (state.score <= 10) scoreMessage = 'Words may not be your thing!';
+        else if (state.score <= 15) scoreMessage = 'Not bad!';
+        else if (state.score <= 20) scoreMessage = 'Good job!';
+        else scoreMessage = 'You did really good!';
+
         html += `
           <div class="text-center">
             <div class="bg-white/10 backdrop-blur rounded-2xl p-6 mb-4">
               <h2 class="text-xl font-bold text-white mb-2">${state.foundWords.length > 0 ? "Time's Up!" : "Today's Results"}</h2>
               <div class="text-4xl font-bold text-yellow-300 mb-2">${state.score} pts</div>
+              <p class="text-white text-lg mb-1">${scoreMessage}</p>
               <p class="text-green-100">${state.foundWords.length} words found</p>
               <p class="text-green-200 text-sm mt-2">
                 ${possibleCount !== null
