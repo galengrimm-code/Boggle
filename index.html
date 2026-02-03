@@ -754,21 +754,17 @@
       }
     }
 
-    // Play again (practice mode)
+    // Play again with new board (practice mode)
     function playAgain() {
       state.board = generateRandomBoard();
       state.possibleWords = null;
       startGame();
     }
 
-    // New game session (go back to ready screen to enter code)
-    function newGameSession() {
-      state.board = generateRandomBoard();
+    // Replay same board (practice mode)
+    function replayBoard() {
       state.possibleWords = null;
-      state.foundWords = [];
-      state.score = 0;
-      state.gameState = 'ready';
-      render();
+      startGame();
     }
 
     // End game
@@ -994,8 +990,8 @@
             </div>
             <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors mb-4">Share Results</button>
             ${state.practiceMode ? `
-              <button onclick="playAgain()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Play Again</button>
-              <button onclick="newGameSession()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors mb-4 ml-2">New Game</button>
+              <button onclick="playAgain()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">New Board</button>
+              <button onclick="replayBoard()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Replay</button>
             ` : ''}
         `;
         
@@ -1088,7 +1084,7 @@
     window.loadBoardFromCode = loadBoardFromCode;
     window.copyPracticeCode = copyPracticeCode;
     window.generateRandomBoard = generateRandomBoard;
-    window.newGameSession = newGameSession;
+    window.replayBoard = replayBoard;
 
     // Initial render
     render();
