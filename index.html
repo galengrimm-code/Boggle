@@ -75,6 +75,20 @@
       });
     }
 
+    // Generate random board (for practice mode)
+    function generateRandomBoard() {
+      const shuffledDice = [...BOGGLE_DICE];
+      for (let i = shuffledDice.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledDice[i], shuffledDice[j]] = [shuffledDice[j], shuffledDice[i]];
+      }
+      return shuffledDice.map(die => {
+        const faceIndex = Math.floor(Math.random() * 6);
+        let letter = die[faceIndex];
+        return letter === 'Q' ? 'Qu' : letter;
+      });
+    }
+
     // Get today's date (local timezone - puzzle resets at local midnight)
     function getTodayString() {
       const now = new Date();
@@ -184,7 +198,8 @@
       lastTouchY: 0,
       pendingTile: null,
       pendingTimeout: null,
-      possibleWords: null
+      possibleWords: null,
+      practiceMode: false
     };
 
     // Initialize board
@@ -655,7 +670,8 @@
       state.score = 0;
       state.timeLeft = 180;
       state.message = '';
-      
+      state.possibleWords = null;
+
       state.timerInterval = setInterval(() => {
         state.timeLeft--;
         if (state.timeLeft <= 0) {
@@ -669,8 +685,27 @@
           }
         }
       }, 1000);
-      
+
       render();
+    }
+
+    // Start practice mode
+    function startPracticeMode() {
+      const nameInput = document.getElementById('playerName');
+      const name = nameInput ? nameInput.value.trim().toLowerCase() : 'player';
+      state.playerName = name || 'player';
+      state.practiceMode = true;
+      state.board = generateRandomBoard();
+      state.gameState = 'ready';
+      state.leaderboard = [];
+      render();
+    }
+
+    // Play again (practice mode)
+    function playAgain() {
+      state.board = generateRandomBoard();
+      state.possibleWords = null;
+      startGame();
     }
 
     // End game
@@ -690,6 +725,9 @@
         state.possibleWords = getAllPossibleWords();
         render();
       }, 100);
+
+      // Skip saving score in practice mode
+      if (state.practiceMode) return;
 
       // Save score and get leaderboard in background
       try {
@@ -727,11 +765,17 @@
                 class="w-full px-4 py-3 rounded-xl text-lg text-center outline-none mb-4"
                 onkeypress="if(event.key==='Enter')handleLogin()"
               />
-              <button 
+              <button
                 onclick="handleLogin()"
                 class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors"
               >
                 Play
+              </button>
+              <button
+                onclick="startPracticeMode()"
+                class="w-full px-6 py-3 mt-3 bg-white/20 hover:bg-white/30 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                Practice Mode
               </button>
             </div>
           </div>
@@ -744,8 +788,8 @@
       // Header
       html += `
         <div class="text-center mb-4">
-          <h1 class="text-3xl font-bold text-white mb-1">Daily Boggle</h1>
-          <p class="text-blue-100 text-sm">${state.todayDate} • ${state.playerName}</p>
+          <h1 class="text-3xl font-bold text-white mb-1">${state.practiceMode ? 'Practice Mode' : 'Daily Boggle'}</h1>
+          <p class="text-blue-100 text-sm">${state.practiceMode ? state.playerName : `${state.todayDate} • ${state.playerName}`}</p>
         </div>
       `;
       
@@ -870,6 +914,7 @@
               </p>
             </div>
             <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors mb-4">Share Results</button>
+            ${state.practiceMode ? `<button onclick="playAgain()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Play Again</button>` : ''}
         `;
         
         // Leaderboard
@@ -952,6 +997,8 @@
     // Make functions global
     window.handleLogin = handleLogin;
     window.startGame = startGame;
+    window.startPracticeMode = startPracticeMode;
+    window.playAgain = playAgain;
     window.submitWord = submitWord;
     window.clearSelection = clearSelection;
     window.setInputMode = setInputMode;
