@@ -470,8 +470,17 @@
 
     // Share results
     function shareResults() {
-      const shareText = `🎲 Daily Boggle ${state.todayDate}\n${state.score} points`;
-      
+      // Find longest word (count Qu as 1 letter)
+      let longestWord = '';
+      state.foundWords.forEach(word => {
+        const len = word.replace(/qu/gi, 'Q').length;
+        const longestLen = longestWord.replace(/qu/gi, 'Q').length;
+        if (len > longestLen) longestWord = word;
+      });
+      const longestLen = longestWord ? longestWord.replace(/qu/gi, 'Q').length : 0;
+
+      const shareText = `Daily Boggle\n${state.todayDate}\n${state.score} points\nLongest word: ${longestLen} letters`;
+
       if (navigator.share) {
         navigator.share({ text: shareText }).catch(() => copyToClipboard(shareText));
       } else {
