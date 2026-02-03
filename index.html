@@ -754,11 +754,14 @@
       }
     }
 
-    // Play again with new board (practice mode)
-    function playAgain() {
+    // New game - go back to ready screen to enter codes (practice mode)
+    function newGame() {
       state.board = generateRandomBoard();
       state.possibleWords = null;
-      startGame();
+      state.foundWords = [];
+      state.score = 0;
+      state.gameState = 'ready';
+      render();
     }
 
     // Replay same board (practice mode)
@@ -1000,7 +1003,7 @@
             </div>
             <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors mb-4">Share Results</button>
             ${state.practiceMode ? `
-              <button onclick="playAgain()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">New Board</button>
+              <button onclick="newGame()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">New Game</button>
               <button onclick="replayBoard()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Replay</button>
             ` : ''}
         `;
@@ -1090,7 +1093,7 @@
     window.handleLogin = handleLogin;
     window.startGame = startGame;
     window.startPracticeMode = startPracticeMode;
-    window.playAgain = playAgain;
+    window.newGame = newGame;
     window.submitWord = submitWord;
     window.clearSelection = clearSelection;
     window.setInputMode = setInputMode;
