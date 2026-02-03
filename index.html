@@ -25,7 +25,7 @@
     @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
     .tile-bounce { animation: bounce 0.5s ease-out; }
     @keyframes bounce { 0% { transform: scale(1); background: #4ade80; } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
-    .float-points { position: fixed; animation: floatUp 1.5s ease-out forwards; pointer-events: none; font-weight: 800; font-size: 2.5rem; color: #fef08a; text-shadow: 0 0 10px #facc15, 0 0 20px #facc15, 0 2px 4px rgba(0,0,0,0.8); z-index: 1000; background: rgba(0,0,0,0.5); padding: 0.25rem 0.75rem; border-radius: 1rem; }
+    .float-points { position: fixed; animation: floatUp 1.5s ease-out forwards; pointer-events: none; font-weight: 800; font-size: 2.5rem; color: #fef08a; text-shadow: 0 0 10px #facc15, 0 0 20px #facc15, 0 3px 6px rgba(0,0,0,0.9); z-index: 1000; }
     @keyframes floatUp { 0% { opacity: 1; transform: translateY(0) scale(1.2); } 20% { opacity: 1; transform: translateY(-20px) scale(1.3); } 100% { opacity: 0; transform: translateY(-100px) scale(1.5); } }
     .timer-urgent { animation: pulse 0.5s ease-in-out infinite; color: #fca5a5 !important; }
     @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.05); } }
@@ -497,7 +497,7 @@
       }
       
       if (!DICTIONARY.has(word)) {
-        animateTiles([...state.selectedPath], 'tile-shake'); showMessage('Not in dictionary');
+        animateTiles([...state.selectedPath], 'tile-shake');
         clearSelection();
         state.typedWord = '';
         render();
@@ -678,6 +678,9 @@
       clearInterval(state.timerInterval);
       state.gameState = 'finished';
       clearSelection();
+
+      // Haptic buzz on game end
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
       // Render finished state immediately, don't wait for API
       render();
