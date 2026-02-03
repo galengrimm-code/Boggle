@@ -3,12 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
   <title>Daily Boggle</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    * { -webkit-tap-highlight-color: transparent; }
+    * { -webkit-tap-highlight-color: transparent; font-family: 'Nunito', sans-serif; }
     body { touch-action: manipulation; }
-    .tile { touch-action: none; }
+    .tile { touch-action: none; user-select: none; }
+    .tile-pop { animation: pop 0.15s ease-out; }
+    @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1.1); } }
+    .tile-shake { animation: shake 0.4s ease-out; }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+    .tile-bounce { animation: bounce 0.5s ease-out; }
+    @keyframes bounce { 0% { transform: scale(1); background: #4ade80; } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    .float-points { position: fixed; animation: floatUp 1.2s ease-out forwards; pointer-events: none; font-weight: 800; font-size: 2rem; color: #facc15; text-shadow: 0 2px 8px rgba(0,0,0,0.4); z-index: 1000; }
+    @keyframes floatUp { 0% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-80px) scale(1.8); } }
+    .timer-urgent { animation: pulse 0.5s ease-in-out infinite; color: #fca5a5 !important; }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.05); } }
+    .board-container { position: relative; }
+    .swipe-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+    .swipe-line { stroke: rgba(250, 204, 21, 0.9); stroke-width: 6; stroke-linecap: round; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-blue-600 to-green-600">
@@ -101,6 +117,39 @@
       if (len === 6) return 3;
       if (len === 7) return 5;
       return 11;
+    }
+
+    
+    // Show floating points animation
+    function showFloatingPoints(points, x, y) {
+      const el = document.createElement('div');
+      el.className = 'float-points';
+      el.textContent = '+' + points;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1200);
+    }
+
+    // Animate tiles
+    function animateTiles(indices, animClass) {
+      indices.forEach(i => {
+        const tile = document.querySelector('[data-index="' + i + '"]');
+        if (tile) {
+          tile.classList.remove('tile-pop', 'tile-shake', 'tile-bounce');
+          void tile.offsetWidth; // trigger reflow
+          tile.classList.add(animClass);
+          setTimeout(() => tile.classList.remove(animClass), 500);
+        }
+      });
+    }
+
+    // Get tile center position
+    function getTileCenter(index) {
+      const tile = document.querySelector('[data-index="' + index + '"]');
+      if (!tile) return { x: 0, y: 0 };
+      const rect = tile.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }
 
     // Dictionary
@@ -290,7 +339,7 @@
       }
       
       if (state.foundWords.includes(word)) {
-        showMessage('Already found!');
+        animateTiles([...state.selectedPath], 'tile-shake'); showMessage('Already found!');
         clearSelection();
         state.typedWord = '';
         render();
@@ -298,7 +347,7 @@
       }
       
       if (!DICTIONARY.has(word)) {
-        showMessage('Not in dictionary');
+        animateTiles([...state.selectedPath], 'tile-shake'); showMessage('Not in dictionary');
         clearSelection();
         state.typedWord = '';
         render();
@@ -315,7 +364,10 @@
       const wordScore = getWordScore(word);
       state.foundWords.push(word);
       state.score += wordScore;
-      showMessage(`+${wordScore} points!`);
+      const lastTile = getTileCenter(state.selectedPath[state.selectedPath.length - 1] || 0);
+      showFloatingPoints(wordScore, lastTile.x - 20, lastTile.y - 20);
+      animateTiles([...state.selectedPath], 'tile-bounce');
+      showMessage('');
       clearSelection();
       state.typedWord = '';
       render();
@@ -462,7 +514,7 @@
       if (state.gameState === 'playing') {
         html += `
           <div class="flex justify-between items-center mb-4 px-2">
-            <div class="text-2xl font-mono font-bold ${state.timeLeft <= 30 ? 'text-red-300' : 'text-white'}">
+            <div class="text-2xl font-mono font-bold ${state.timeLeft <= 30 ? 'text-red-300 timer-urgent' : 'text-white'}">
               ⏱ ${formatTime(state.timeLeft)}
             </div>
             <div class="text-2xl font-bold text-yellow-300">${state.score} pts</div>
@@ -471,7 +523,7 @@
       }
       
       // Game Board
-      html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 select-none"><div class="grid grid-cols-4 gap-2">`;
+      html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 select-none board-container"><svg class="swipe-svg" id="swipeSvg"></svg><div class="grid grid-cols-4 gap-2">`;
       
       state.board.forEach((letter, index) => {
         const isSelected = state.selectedPath.includes(index);
@@ -609,6 +661,31 @@
         });
         typeInput.focus();
       }
+
+      // Draw swipe lines
+      setTimeout(() => {
+        const svg = document.getElementById('swipeSvg');
+        if (svg && state.selectedPath.length > 1) {
+          let lines = '';
+          for (let i = 0; i < state.selectedPath.length - 1; i++) {
+            const from = document.querySelector('[data-index="' + state.selectedPath[i] + '"]');
+            const to = document.querySelector('[data-index="' + state.selectedPath[i + 1] + '"]');
+            if (from && to) {
+              const svgRect = svg.getBoundingClientRect();
+              const fromRect = from.getBoundingClientRect();
+              const toRect = to.getBoundingClientRect();
+              const x1 = fromRect.left + fromRect.width / 2 - svgRect.left;
+              const y1 = fromRect.top + fromRect.height / 2 - svgRect.top;
+              const x2 = toRect.left + toRect.width / 2 - svgRect.left;
+              const y2 = toRect.top + toRect.height / 2 - svgRect.top;
+              lines += '<line class="swipe-line" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
+            }
+          }
+          svg.innerHTML = lines;
+        } else if (svg) {
+          svg.innerHTML = '';
+        }
+      }, 0);
     }
 
     // Global event listeners
