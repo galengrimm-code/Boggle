@@ -679,21 +679,8 @@
       state.gameState = 'finished';
       clearSelection();
 
-      // Buzz on game end (vibration for Android, audio for iOS)
-      if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 100]);
-      } else {
-        // Audio buzz fallback for iOS
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = 200;
-        gain.gain.value = 0.3;
-        osc.start();
-        setTimeout(() => { osc.stop(); ctx.close(); }, 150);
-      }
+      // Haptic vibration on game end (Android only - iOS doesn't support Vibration API)
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
       // Render finished state immediately, don't wait for API
       render();
