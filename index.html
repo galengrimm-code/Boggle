@@ -672,16 +672,21 @@
       state.message = '';
       state.possibleWords = null;
 
+      // Track actual end time so timer works even when tab is backgrounded
+      const endTime = Date.now() + 180 * 1000;
+
       state.timerInterval = setInterval(() => {
-        state.timeLeft--;
-        if (state.timeLeft <= 0) {
+        const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+        state.timeLeft = remaining;
+
+        if (remaining <= 0) {
           endGame();
         } else {
           // Quick timer update without full render
           const timerEl = document.getElementById('timerDisplay');
           if (timerEl) {
-            timerEl.textContent = '⏱ ' + formatTime(state.timeLeft);
-            timerEl.className = 'text-2xl font-mono font-bold ' + (state.timeLeft <= 30 ? 'text-red-300 timer-urgent' : 'text-white');
+            timerEl.textContent = '⏱ ' + formatTime(remaining);
+            timerEl.className = 'text-2xl font-mono font-bold ' + (remaining <= 30 ? 'text-red-300 timer-urgent' : 'text-white');
           }
         }
       }, 1000);
