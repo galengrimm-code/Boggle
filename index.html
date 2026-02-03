@@ -679,6 +679,18 @@
 
     // Start game
     function startGame() {
+      // In practice mode, check if a code was entered and load that board
+      if (state.practiceMode) {
+        const codeInput = document.getElementById('practiceCodeInput');
+        if (codeInput && codeInput.value.trim()) {
+          const code = parseInt(codeInput.value.trim());
+          if (code >= 10000 && code <= 99999) {
+            state.practiceCode = code;
+            state.board = generateSeededBoard(code);
+          }
+        }
+      }
+
       state.gameState = 'playing';
       state.foundWords = [];
       state.score = 0;
