@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Daily Boggle</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { touch-action: manipulation; }
+    .tile { touch-action: none; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-blue-600 to-green-600">
+  <div id="app"></div>
+
+  <script>
+    // ============================================
+    // CONFIGURATION - UPDATE THIS URL
+    // ============================================
+    const SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
+    // ============================================
+
+    // Boggle dice
+    const BOGGLE_DICE = [
+      'AAEEGN', 'ABBJOO', 'ACHOPS', 'AFFKPS',
+      'AOOTTW', 'CIMOTU', 'DEILRX', 'DELRVY',
+      'DISTTY', 'EEGHNW', 'EEINSU', 'EHRTVW',
+      'EIOSST', 'ELRTTY', 'HIMNQU', 'HLNNRZ'
+    ];
+
+    // Seeded random
+    function seededRandom(seed) {
+      const x = Math.sin(seed++) * 10000;
+      return x - Math.floor(x);
+    }
+
+    // Generate daily board
+    function generateDailyBoard(dateString) {
+      const seed = dateString.split('-').join('') * 1;
+      let currentSeed = seed;
+      const shuffledDice = [...BOGGLE_DICE];
+      for (let i = shuffledDice.length - 1; i > 0; i--) {
+        const j = Math.floor(seededRandom(currentSeed++) * (i + 1));
+        [shuffledDice[i], shuffledDice[j]] = [shuffledDice[j], shuffledDice[i]];
+      }
+      return shuffledDice.map(die => {
+        const faceIndex = Math.floor(seededRandom(currentSeed++) * 6);
+        let letter = die[faceIndex];
+        return letter === 'Q' ? 'Qu' : letter;
+      });
+    }
+
+    // Get today's date
+    function getTodayString() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    // Check adjacency
+    function areAdjacent(pos1, pos2) {
+      const row1 = Math.floor(pos1 / 4), col1 = pos1 % 4;
+      const row2 = Math.floor(pos2 / 4), col2 = pos2 % 4;
+      return Math.abs(row1 - row2) <= 1 && Math.abs(col1 - col2) <= 1 && pos1 !== pos2;
+    }
+
+    // Check if word can be formed
+    function canFormWord(word, board) {
+      const upperWord = word.toUpperCase();
+      const boardUpper = board.map(l => l.toUpperCase());
+      
+      function search(wordIndex, position, used) {
+        if (wordIndex >= upperWord.length) return true;
+        const remaining = upperWord.slice(wordIndex);
+        const letter = boardUpper[position];
+        if (!remaining.startsWith(letter)) return false;
+        const newUsed = new Set(used);
+        newUsed.add(position);
+        const nextIndex = wordIndex + letter.length;
+        if (nextIndex >= upperWord.length) return true;
+        for (let next = 0; next < 16; next++) {
+          if (!newUsed.has(next) && areAdjacent(position, next)) {
+            if (search(nextIndex, next, newUsed)) return true;
+          }
+        }
+        return false;
+      }
+      
+      for (let start = 0; start < 16; start++) {
+        if (search(0, start, new Set())) return true;
+      }
+      return false;
+    }
+
+    // Score calculation
+    function getWordScore(word) {
+      const len = word.replace(/qu/gi, 'Q').length;
+      if (len <= 2) return 0;
+      if (len <= 4) return 1;
+      if (len === 5) return 2;
+      if (len === 6) return 3;
+      if (len === 7) return 5;
+      return 11;
+    }
+
+    // Dictionary
+    const DICTIONARY = new Set([
+      'ace','ache','acne','acre','act','add','ado','ads','aft','age','aged','ago','aid','aide','aim','air','aisle','ale','all','ally','also','alto','and','ant','ante','any','ape','apt','arc','arch','are','area','ark','arm','army','art','arts','ash','ask','ate','auto','awe','awl','axe','aye','awhile',
+      'babe','baby','back','bad','badge','bag','bail','bait','bake','bald','bale','ball','ban','band','bane','bang','bank','bar','bare','bark','barn','base','bash','bask','bass','bat','bath','bay','bead','beak','beam','bean','bear','beat','bed','beds','bee','beef','been','beer','bees','beet','bell','belt','bend','bent','best','bet','bets','bid','bids','big','bike','bile','bill','bin','bind','bird','bit','bite','bits','bled','blew','blob','bloc','blog','blot','blow','blue','blur','boat','bob','bode','body','bog','boil','bold','bolt','bomb','bond','bone','book','boom','boon','boot','bore','born','boss','both','bout','bow','bowl','bows','box','boy','boys','brace','brad','brag','bran','brass','brat','brave','bray','bread','break','bred','breed','brew','bribe','brick','bride','brig','brim','bring','brink','brisk','broad','broil','broke','brood','brook','broom','broth','brow','brown','brush','brute','buck','bud','budge','bug','bugs','build','built','bulb','bulk','bull','bump','bun','bunch','bunk','burn','burnt','burst','bury','bus','bush','bust','busy','but','buy','buyer','buys','buzz',
+      'cab','cage','cake','calf','call','calm','came','camp','can','cane','cap','cape','car','card','care','carp','cars','cart','case','cash','cask','cast','cat','catch','cats','cave','cease','cell','cent','chain','chair','champ','chance','change','chant','chap','char','charm','chart','chase','chat','cheap','cheat','check','cheek','cheer','chess','chest','chew','chick','chief','child','chill','chimp','chin','chip','chips','choke','choose','chop','chord','chore','chose','chunk','churn','cite','city','clad','claim','clam','clamp','clams','clan','clap','clash','clasp','class','claw','clay','clean','clear','clerk','click','cliff','climb','cling','clip','clips','cloak','clock','clone','close','cloth','cloud','clout','clove','clown','club','clubs','clue','clues','clump','clung','coach','coal','coast','coat','coats','cock','code','coil','coin','coins','cold','colon','color','colt','comb','come','comes','comet','comic','comma','common','cone','cook','cool','cope','copper','copy','coral','cord','core','cork','corn','corner','corps','cost','costs','couch','cough','could','count','coup','couple','course','court','cousin','cove','cover','cow','coward','cowboy','cows','cozy','crab','crack','craft','cramp','crane','crank','crash','crate','crave','crawl','craze','crazy','creak','cream','create','creek','creep','crest','crew','crib','cried','crime','crisp','critic','croak','crop','crops','cross','crouch','crow','crowd','crown','crude','cruel','cruise','crumb','crunch','crush','crust','cry','cub','cube','cubs','cud','cue','cuff','cult','cup','cups','curb','curd','cure','curl','curry','curse','curve','custom','cut','cute','cuts',
+      'dab','dad','daily','dairy','dam','damp','dance','dare','dark','darn','dart','dash','data','date','dates','dawn','day','days','dead','deaf','deal','dealt','dean','dear','death','debt','decay','deck','decks','deed','deem','deep','deer','demo','demon','den','dent','deny','depot','depth','desk','dial','dice','did','die','died','dies','diet','dig','dim','dime','dine','diner','ding','dip','dire','dirt','dirty','disc','dish','disk','ditch','dive','dock','dodge','doe','does','dog','dogs','dole','doll','dome','done','donor','doom','door','doors','dope','dose','dot','dots','double','doubt','dough','dove','down','downs','doze','dozen','drab','draft','drag','drain','drake','drama','drank','drape','draw','drawn','draws','dread','dream','dress','drew','dried','drift','drill','drink','drip','drive','drop','drops','drove','drown','drum','drums','drunk','dry','dual','dub','duck','dud','due','duel','dues','duet','dug','duke','dull','dumb','dump','dune','dunk','duo','dusk','dust','dusty','duty','dwell','dye',
+      'each','eager','eagle','ear','earl','early','earn','earth','ease','east','easy','eat','eaten','eats','echo','edge','edit','eel','egg','eggs','ego','eight','either','elbow','elder','elect','elite','elm','else','elves','embed','emerge','emit','empty','end','ended','ends','enemy','energy','engine','enjoy','enough','enter','entire','entry','equal','era','erase','error','escape','essay','even','event','ever','every','evil','exact','exam','example','except','excite','excuse','exist','exit','expand','expect','expert','explain','expose','extend','extra','eye','eyed','eyes',
+      'fable','face','faced','faces','fact','factor','facts','fade','fail','faint','fair','fairy','faith','fake','fall','falls','false','fame','family','famous','fan','fancy','fang','fans','far','fare','farm','farms','fast','fat','fatal','fate','father','fault','favor','fear','fears','feast','feat','feather','feature','fed','fee','feed','feel','feels','fees','feet','fell','fellow','felt','female','fence','fern','ferry','fever','few','fewer','fiber','field','fierce','fifth','fifty','fig','fight','figure','file','files','fill','filled','film','films','filter','final','finally','find','finds','fine','finer','finger','finish','fire','fired','fires','firm','first','fish','fist','fit','fits','five','fix','fixed','flag','flags','flair','flak','flake','flame','flank','flap','flaps','flare','flash','flask','flat','flaw','flea','fled','flee','flesh','flew','flex','flick','flies','flight','fling','flip','flit','float','flock','flood','floor','flop','flour','flow','flower','flows','flu','flue','fluff','fluid','flung','flush','flute','flux','fly','foam','focus','foe','fog','foil','fold','folk','folks','follow','fond','font','food','foods','fool','foot','for','force','ford','forest','forever','forge','forget','fork','form','formal','former','forms','fort','forth','fortune','forty','forum','forward','fossil','foster','fought','foul','found','four','fourth','fowl','fox','frame','frank','fraud','freak','free','freed','freedom','freeze','freight','french','fresh','fret','friar','friday','fried','friend','fright','fringe','frog','from','front','frost','frown','froze','fruit','fry','fudge','fuel','full','fume','fumes','fun','fund','funds','funny','fur','furnace','fury','fuse','fuss','future','fuzz',
+      'gain','gal','gale','gall','game','games','gang','gap','gaps','garage','garden','garlic','gas','gasp','gate','gates','gather','gauge','gave','gaze','gear','gears','geese','gel','gem','gene','genius','genre','gentle','germ','get','gets','ghost','giant','gift','gifts','gig','gill','gilt','gin','girl','girls','gist','give','given','gives','glad','glance','glare','glass','gleam','glee','glide','glimpse','globe','gloom','glory','gloss','glove','glow','glue','glum','go','goal','goals','goat','god','gods','goes','gold','golf','gone','gong','good','goods','goose','gore','gorge','gossip','got','gotten','gown','grab','grace','grade','grain','gram','grand','grant','grape','graph','grasp','grass','grave','gravy','gray','graze','grease','great','greed','greek','green','greet','grew','grey','grid','grief','grill','grim','grin','grind','grip','gripe','grit','groan','groom','groove','gross','ground','group','groups','grove','grow','growl','grown','grows','growth','guard','guess','guest','guide','guild','guilt','guilty','gulf','gull','gulp','gum','gun','guns','gust','gut','guts','guy','guys','gym',
+      'habit','hack','had','hail','hair','hairs','hairy','half','hall','halt','ham','hammer','hamper','hand','handle','hands','handy','hang','hangs','happen','happy','harbor','hard','hardly','harm','harsh','harvest','has','hash','haste','hasty','hat','hatch','hate','hated','hater','hates','hatred','haul','haunt','have','haven','hawk','hay','hazard','haze','hazy','head','heads','heal','health','heap','hear','heard','hears','heart','hearts','heat','heated','heater','heaven','heavy','hedge','heel','heels','height','heir','held','hell','hello','helm','help','helped','helps','hem','hen','hence','her','herb','herd','here','hero','hers','hide','high','higher','hike','hill','hills','hilly','hilt','him','himself','hind','hinge','hint','hints','hip','hips','hire','hired','his','hit','hits','hive','hoard','hobby','hog','hogs','hold','holder','holds','hole','holes','hollow','holy','home','homes','honest','honey','honor','hood','hook','hooks','hoop','hop','hope','hoped','hopes','horn','horns','horror','horse','hose','host','hot','hotel','hound','hour','hours','house','houses','how','however','howl','hub','hue','hug','huge','hugs','hull','hum','human','humble','humid','humor','hump','hunch','hundred','hung','hunger','hungry','hunk','hunt','hunter','hurl','hurry','hurt','hurts','husband','hush','husk','hut','hymn',
+      'ice','iced','icy','idea','ideal','ideas','idle','idol','ignore','ill','image','impact','imply','import','impose','improve','inch','incident','income','increase','indeed','index','indicate','indoor','industry','infant','influence','inform','initial','injure','ink','inn','inner','input','insect','insert','inside','insist','inspire','install','instance','instant','instead','insult','intend','intense','intent','interest','internal','into','introduce','invade','invent','invest','invite','involve','iron','island','isle','isles','isolate','issue','itch','item','items','its','itself','ivory','ivy',
+      'jab','jack','jacket','jade','jag','jail','jam','jams','jar','jars','jaw','jaws','jay','jazz','jealous','jeans','jeep','jelly','jerk','jersey','jest','jet','jets','jewel','jig','job','jobs','jock','jog','join','joined','joins','joint','joke','joked','joker','jokes','jolly','jolt','journal','journey','joy','judge','jug','juice','juicy','jump','jumped','jumps','jungle','junior','junk','jury','just','justice',
+      'keen','keep','keeper','keeps','kept','kernel','ketchup','kettle','key','keys','kick','kicked','kicks','kid','kids','kill','killed','killer','kills','kin','kind','kinds','king','kings','kiss','kit','kitchen','kite','kitten','kitty','knee','kneel','knees','knew','knife','knight','knit','knob','knock','knot','know','knowing','known','knows',
+      'lab','label','labor','labs','lace','lack','lad','ladder','laden','ladle','lady','lag','laid','lair','lake','lakes','lamb','lame','lamp','lamps','land','lands','lane','lanes','lap','laps','large','larger','lark','laser','lash','lass','last','latch','late','lately','later','latest','latin','latter','laugh','launch','law','lawn','laws','lay','layer','layers','lays','lazy','lead','leader','leads','leaf','league','leak','lean','leap','learn','lease','leash','least','leather','leave','leaves','led','ledge','left','leg','legal','legend','lemon','lend','length','lens','lent','less','lesser','lesson','let','lets','letter','letters','level','lever','liar','liberty','library','lice','lick','lid','lids','lie','lied','lies','life','lift','light','lights','like','liked','likely','likes','limb','limbs','lime','limit','limp','line','lined','linen','liner','lines','linger','link','links','lion','lip','lips','liquid','list','listed','listen','lists','lit','liter','little','live','lived','lively','liver','lives','living','lizard','load','loads','loaf','loan','loans','lobby','local','locate','lock','locked','locks','lodge','loft','log','logic','logo','logs','lone','long','longer','look','looked','looks','loom','loop','loops','loose','lord','lords','lose','loser','loses','loss','lost','lot','lots','lotus','loud','lousy','love','loved','lovely','lover','loves','low','lower','luck','lucky','lump','lumps','lunch','lung','lungs','lure','lush','lust',
+      'machine','mad','made','madness','magic','maid','mail','main','major','make','maker','makes','male','mall','man','manage','mane','manner','manor','many','map','maps','marble','march','margin','mark','marked','marker','marks','marry','mars','marsh','mart','marvel','mash','mask','mass','mast','master','mat','match','mate','math','mats','matter','mature','may','maybe','mayor','maze','meal','meals','mean','means','meant','measure','meat','medal','media','medium','meet','melon','melt','member','memo','memory','men','mend','mental','mention','menu','mercy','mere','merely','merge','merit','merry','mesh','mess','messy','met','metal','meter','method','mice','mid','middle','midst','might','mighty','mild','mile','miles','milk','mill','mills','mind','minds','mine','miner','minor','mint','minus','minute','mirror','mirth','miss','mission','mist','mister','misty','mix','mixed','moan','mob','mobs','mock','mode','model','modem','modern','modest','moist','mold','mom','moment','monday','money','monk','monkey','monster','month','months','mood','moods','moon','moor','moose','mop','moral','more','morning','mortal','moss','most','mostly','motel','moth','mother','motion','motor','motto','mound','mount','mountain','mourn','mouse','mouth','move','moved','mover','moves','movie','movies','much','muck','mud','muddy','mug','mugs','mule','mull','munch','murder','murky','muscle','museum','mush','music','must','mute','mutual','my','myself','mystery','myth',
+      'nab','nag','nail','nails','naive','naked','name','named','names','nap','narrow','nasty','nation','native','nature','naval','navy','near','nearly','neat','neck','need','needed','needle','needs','negative','neighbor','neither','neon','nephew','nerve','nest','net','nets','network','neutral','never','new','newer','news','next','nice','nick','night','nights','nine','ninth','nip','nit','noble','nod','node','nodes','noise','noisy','none','nook','noon','nor','norm','normal','north','northern','nose','not','notch','note','noted','notes','nothing','notice','notion','noun','novel','now','nowhere','nude','nudge','numb','number','nurse','nut','nuts',
+      'oak','oar','oars','oasis','oath','oats','obey','object','observe','obtain','obvious','occasion','occur','ocean','odd','odds','odor','off','offend','offense','offer','office','officer','official','often','oil','oily','old','older','oldest','olive','omen','omit','once','one','ones','onion','online','only','onset','onto','open','opened','opens','opera','operate','opinion','opponent','opportunity','oppose','opposite','option','orange','orbit','order','orders','ordinary','organ','origin','original','other','others','otherwise','ought','ounce','our','ours','ourselves','out','outcome','outdoor','outer','outfit','outlet','outline','outlook','output','outside','outward','oval','oven','over','overall','overcome','overlook','overnight','overseas','overturn','owe','owed','owl','owls','own','owned','owner','owns','oxygen',
+      'pace','pack','package','packs','pact','pad','paddle','pads','pagan','page','pages','paid','pail','pain','pains','paint','pair','pairs','pal','palace','pale','palm','palms','pan','panda','pane','panel','pang','panic','pans','pant','pants','paper','papers','par','parade','parcel','pardon','parent','park','parks','part','partial','particle','particular','partly','partner','parts','party','pass','passage','passed','passes','passion','past','paste','pat','patch','path','paths','patient','patrol','pattern','pause','pave','paw','pawn','paws','pay','paying','pays','peace','peach','peak','peaks','peal','pear','pearl','peas','peck','pedal','peek','peel','peep','peer','peers','peg','pen','penalty','pencil','penny','pens','people','pepper','per','percent','perfect','perform','perhaps','period','permit','person','pet','pets','phase','phone','photo','phrase','physical','piano','pick','picked','picks','picture','pie','piece','pieces','pier','pig','pile','piles','pill','pillar','pillow','pills','pilot','pin','pinch','pine','pink','pins','pint','pioneer','pipe','pipes','pit','pitch','pits','pity','pizza','place','placed','places','plague','plain','plains','plan','plane','planes','planet','plank','planned','plans','plant','plants','plastic','plate','plates','platform','platter','play','played','player','plays','plaza','plea','plead','pleasant','please','pleased','pleasure','pledge','plenty','plot','plots','plow','ploy','pluck','plug','plum','plumb','plume','plump','plunge','plus','plush','pocket','pod','pods','poem','poems','poet','poetry','point','pointed','points','poise','poison','poke','polar','pole','poles','police','policy','polish','polite','political','poll','polls','pond','ponder','pool','pools','poor','pop','pope','pops','popular','porch','pore','pork','port','portion','portrait','ports','pose','posed','poses','position','positive','possess','possible','post','posted','poster','posts','pot','potato','potent','potential','pots','potter','pottery','pouch','poultry','pounce','pound','pounds','pour','pout','poverty','powder','power','powers','practical','practice','praise','pray','prayer','preach','precious','precise','predict','prefer','premium','prepare','presence','present','preserve','president','press','pressure','pretend','pretty','prevent','previous','prey','price','priced','prices','pride','priest','primary','prime','prince','princess','principal','principle','print','prior','prison','private','prize','pro','probable','probably','problem','problems','proceed','process','produce','product','profession','professor','profile','profit','program','progress','project','promise','promote','prompt','proof','proper','property','proposal','propose','prospect','protect','protein','protest','proud','prove','proved','proven','provide','province','public','pull','pulled','pulls','pulse','pump','pumps','punch','punish','pupil','puppet','puppy','purchase','pure','purple','purpose','purse','pursue','push','pushed','put','puts','puzzle','pyramid',
+      'quack','quaint','qualify','quality','quantity','quarter','queen','query','quest','question','quick','quiet','quilt','quit','quite','quiz','quota','quote','quotes',
+      'rabbit','race','raced','races','rack','radar','radio','radish','raft','rag','rage','rags','raid','rail','rails','rain','rains','rainy','raise','raised','ramp','ran','ranch','random','range','rank','ranks','rapid','rare','rash','rat','rate','rated','rates','rather','ratio','rats','rave','raw','ray','rays','reach','react','read','reader','reads','ready','real','reality','realize','really','realm','reap','rear','reason','rebel','recall','receive','recent','recipe','reckon','recognize','record','recover','red','reduce','reed','reef','reel','refer','reflect','reform','refresh','refuse','regard','regime','region','register','regret','regular','reign','reject','relate','relax','release','relief','relieve','religion','rely','remain','remark','remedy','remember','remind','remote','remove','render','renew','rent','repair','repeat','replace','reply','report','represent','republic','request','require','rescue','research','reserve','reset','reside','resign','resist','resolve','resort','resource','respect','respond','response','rest','restore','restrict','result','retail','retain','retire','retreat','return','reveal','revenue','reverse','review','revise','revolt','revolution','reward','rhythm','rib','ribbon','ribs','rice','rich','rid','ride','rider','rides','ridge','ridiculous','rifle','rift','rig','right','rights','rigid','rim','ring','rings','rinse','riot','rip','ripe','ripen','rise','risen','rises','rising','risk','risks','risky','ritual','rival','river','rivers','road','roads','roam','roar','roast','rob','robe','robin','robot','robust','rock','rocket','rocks','rocky','rod','rode','rods','role','roles','roll','rolled','roller','rolls','roman','romance','roof','room','rooms','roost','root','roots','rope','rose','rot','rotate','rotten','rough','round','rounds','route','routine','row','rows','royal','rub','rubber','rubbish','rubble','ruby','rude','rug','rugged','ruin','ruins','rule','ruled','ruler','rules','rumble','rumor','run','rung','runner','running','runs','rural','rush','rust','rusty','rut',
+      'sack','sacred','sad','saddle','sadly','safe','safety','sag','sage','said','sail','saint','sake','salad','salary','sale','sales','salmon','salon','salt','salty','salute','same','sample','sand','sands','sandy','sang','sank','sap','sat','satellite','satisfy','saturday','sauce','save','saved','saves','savings','saw','saws','say','saying','says','scale','scales','scan','scandal','scar','scarce','scare','scarf','scene','scenes','scent','schedule','scheme','scholar','school','schools','science','scissors','scold','scoop','scope','score','scored','scores','scorn','scout','scramble','scrap','scrape','scratch','scream','screen','screw','scrub','sea','seal','seam','search','seas','season','seat','seats','second','seconds','secret','section','sector','secure','security','see','seed','seeds','seeing','seek','seem','seemed','seems','seen','sees','segment','seize','select','self','sell','seller','sells','send','senior','sense','sent','sentence','separate','september','series','serious','serve','server','service','session','set','sets','setting','settle','settled','seven','seventh','severe','sew','sex','shade','shadow','shaft','shake','shaken','shall','shallow','shame','shape','shaped','shapes','share','shared','shares','shark','sharp','shatter','shave','she','shed','sheds','sheep','sheer','sheet','sheets','shelf','shell','shells','shelter','shift','shifts','shin','shine','shiny','ship','ships','shirt','shirts','shock','shoe','shoes','shook','shoot','shop','shops','shore','short','shot','shots','should','shoulder','shout','shove','shovel','show','shower','shown','shows','shrimp','shrine','shrink','shrub','shrug','shut','shy','sick','side','sides','siege','sigh','sight','sign','signal','signed','signs','silence','silent','silk','silly','silver','similar','simple','simply','sin','since','sing','singer','single','sink','sinks','sip','sir','sister','sit','site','sites','sits','sitting','six','sixth','sixty','size','sized','sizes','skate','sketch','ski','skid','skill','skilled','skills','skin','skins','skip','skirt','skull','sky','slab','slack','slain','slam','slant','slap','slash','slate','slave','slay','sled','sleek','sleep','sleeve','slept','slice','slick','slid','slide','slight','slim','sling','slip','slit','slob','slope','slot','slots','slow','slower','slowly','slug','slum','slump','slush','sly','smack','small','smart','smash','smell','smells','smile','smiled','smiles','smog','smoke','smoky','smooth','snack','snag','snail','snake','snap','snare','snarl','snatch','sneak','sniff','snow','snowy','snub','snug','soak','soap','soar','sob','sober','social','society','sock','socks','soda','sofa','soft','soften','software','soil','solar','sold','soldier','sole','solely','solid','solo','solution','solve','some','somebody','somehow','someone','something','sometimes','somewhat','somewhere','son','song','songs','sons','soon','sooner','soot','soothe','sore','sorrow','sorry','sort','sorts','sought','soul','souls','sound','sounds','soup','sour','source','sources','south','southern','space','spaces','spade','span','spar','spare','spark','sparse','spasm','spawn','speak','speaker','speaks','spear','special','species','specific','speck','speech','speed','spell','spend','spent','sphere','spice','spider','spike','spill','spin','spine','spiral','spirit','spit','spite','splash','split','spoil','spoke','spoken','sponge','sponsor','spoon','sport','sports','spot','spots','spouse','spout','spray','spread','spree','spring','sprint','sprout','spur','spurt','spy','squad','square','squash','squat','squeak','squeeze','squid','stab','stable','stack','staff','stage','stages','stain','stair','stairs','stake','stale','stall','stamp','stamps','stance','stand','stands','staple','star','stare','stark','stars','start','starts','state','stated','states','station','status','stay','stayed','stays','steady','steak','steal','steam','steel','steep','steer','stem','stems','step','steps','stern','stew','stick','sticks','sticky','stiff','still','sting','stink','stir','stitch','stock','stocks','stole','stolen','stomach','stomp','stone','stones','stood','stool','stoop','stop','stops','storage','store','stored','stores','storm','storms','story','stove','straight','strain','strand','strange','stranger','strap','straw','stray','streak','stream','street','stress','stretch','strict','stride','strife','strike','string','strings','strip','stripe','strips','strive','stroke','stroll','strong','struck','structure','struggle','stub','stuck','stud','student','studio','study','stuff','stumble','stump','stun','stung','stunk','stupid','sturdy','style','styles','subject','submit','substance','subtle','suburb','succeed','success','such','suck','sudden','sue','suffer','sugar','suggest','suit','suite','suits','sum','summary','summer','summit','sun','sunday','sung','sunk','sunny','sunrise','sunset','super','supper','supply','support','suppose','supreme','sure','surely','surface','surge','surplus','surprise','surround','survey','survive','suspect','suspend','swallow','swam','swamp','swan','swap','swarm','swat','sway','swear','sweat','sweater','sweep','sweet','swell','swept','swift','swim','swing','swipe','swirl','swiss','switch','sword','swore','sworn','swung','symbol','sympathy','symptom','system','systems',
+      'table','tables','tablet','tack','tackle','tact','tag','tags','tail','tails','take','taken','takes','tale','talent','tales','talk','talked','talks','tall','tame','tan','tank','tanks','tap','tape','tapes','taps','tar','target','task','tasks','taste','taught','tax','taxes','taxi','tea','teach','teacher','team','teams','tear','tears','tease','technical','technique','technology','teen','teeth','telephone','television','tell','tells','temper','temple','tempo','tempt','ten','tenant','tend','tender','tennis','tense','tension','tent','tenth','term','terms','terrace','terrible','territory','terror','test','tested','tests','text','than','thank','thanks','that','the','theater','their','them','theme','themselves','then','theory','therapy','there','therefore','these','they','thick','thief','thigh','thin','thing','things','think','third','thirst','thirsty','thirteen','thirty','this','thorn','thorough','those','though','thought','thousand','thread','threat','three','threw','thrill','thrive','throat','throne','through','throughout','throw','thrown','throws','thrust','thud','thumb','thunder','thursday','thus','tick','ticket','tide','tidy','tie','tied','tier','ties','tiger','tight','tile','tiles','till','tilt','timber','time','timed','times','timing','tin','tiny','tip','tips','tire','tired','tires','tissue','title','titles','toad','toast','today','toe','toes','together','toil','told','toll','tomato','tomb','tomorrow','ton','tone','tones','tongue','tonight','tons','too','took','tool','tools','tooth','top','topic','topics','tops','torch','tore','torn','torture','toss','total','touch','tough','tour','tourist','tournament','toward','towards','towel','tower','town','towns','toy','toys','trace','track','tracks','trade','tradition','traffic','tragedy','trail','train','trained','trains','trait','traits','tramp','transfer','transform','transit','trap','trash','travel','tray','treasure','treat','treaty','tree','trees','trek','tremble','trend','trends','trial','trials','triangle','tribal','tribe','trick','tricks','tried','tries','trigger','trim','trio','trip','trips','triumph','troop','troops','trophy','tropical','trot','trouble','trout','truck','trucks','true','truly','trumpet','trunk','trust','truth','try','trying','tub','tube','tubes','tuck','tuesday','tug','tulip','tumble','tumor','tuna','tune','tunes','tunnel','turkey','turn','turned','turns','turtle','tutor','twelve','twenty','twice','twin','twins','twist','two','type','types','typical',
+      'ugly','ultimate','umbrella','unable','uncle','under','undergo','understand','undertake','undo','unfair','unfold','unhappy','uniform','union','unique','unit','unite','units','unity','universe','university','unknown','unless','unlike','unlikely','until','unusual','unveil','unwilling','up','update','upon','upper','upset','upstairs','upward','urban','urge','urgent','us','use','used','useful','user','users','uses','using','usual','utility',
+      'vacant','vacation','vacuum','vague','vain','valid','valley','valuable','value','values','valve','van','vanish','vary','vase','vast','vault','vegetable','vehicle','veil','vein','velvet','vendor','venture','verb','verdict','verify','verse','version','versus','very','vessel','veteran','via','vice','victim','victory','video','view','viewer','views','village','villain','vine','violate','violent','violet','violin','virtual','virtue','virus','visible','vision','visit','visitor','visual','vital','vivid','vocal','voice','voices','void','volcano','volume','volunteer','vote','voter','votes','vow','vowel','voyage',
+      'wade','wag','wage','wages','wagon','waist','wait','waited','waiter','waiting','waits','wake','walk','walked','walks','wall','wallet','walls','wander','want','wanted','wants','war','ward','warm','warmth','warn','warning','warp','warrant','warrior','wars','wary','was','wash','waste','watch','water','waters','wave','waved','waves','wax','way','ways','weak','wealth','weapon','weapons','wear','wearing','wears','weary','weather','weave','web','wed','wedding','wednesday','weed','weeds','week','weekend','weekly','weeks','weep','weigh','weight','weird','welcome','welfare','well','wells','went','wept','were','west','western','wet','whale','what','whatever','wheat','wheel','wheels','when','whenever','where','whereas','wherever','whether','which','while','whim','whip','whirl','whisper','whistle','white','who','whoever','whole','whom','whose','why','wicked','wide','widely','widen','wider','widow','width','wife','wild','will','willing','willow','win','wind','window','winds','windy','wine','wines','wing','wings','winner','wins','winter','wipe','wire','wired','wires','wisdom','wise','wish','wished','wishes','wit','witch','with','withdraw','within','without','witness','wits','woe','woke','wolf','wolves','woman','women','won','wonder','wonderful','wood','wooden','woods','wool','word','words','wore','work','worked','worker','workers','working','works','workshop','world','worlds','worm','worms','worn','worried','worry','worse','worship','worst','worth','worthy','would','wound','wow','wrap','wrath','wreck','wrestle','wrist','write','writer','writes','writing','written','wrong','wrote',
+      'yard','yarn','yawn','yeah','year','yearly','years','yell','yellow','yes','yesterday','yet','yield','yoga','yolk','you','young','younger','your','yours','yourself','youth','youthful',
+      'zap','zeal','zebra','zero','zest','zinc','zip','zone','zones','zoo','zoom'
+    ]);
+
+    // Game state
+    let state = {
+      gameState: 'login', // login, ready, playing, finished
+      board: [],
+      selectedPath: [],
+      currentWord: '',
+      foundWords: [],
+      timeLeft: 180,
+      score: 0,
+      message: '',
+      todayDate: getTodayString(),
+      playerName: localStorage.getItem('boggle_player') || '',
+      inputMode: 'swipe',
+      typedWord: '',
+      isDragging: false,
+      leaderboard: [],
+      timerInterval: null
+    };
+
+    // Initialize board
+    state.board = generateDailyBoard(state.todayDate);
+
+    // Tile refs
+    let tileElements = [];
+
+    // API calls
+    async function checkPlayer(name) {
+      try {
+        const url = `${SCRIPT_URL}?action=check&player=${encodeURIComponent(name)}&date=${state.todayDate}`;
+        const response = await fetch(url);
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { played: false };
+      }
+    }
+
+    async function saveScore(name, score, words) {
+      try {
+        const url = `${SCRIPT_URL}?action=save&player=${encodeURIComponent(name)}&date=${state.todayDate}&score=${score}&words=${words}`;
+        await fetch(url);
+      } catch (e) {
+        console.error('API error:', e);
+      }
+    }
+
+    async function getLeaderboard() {
+      try {
+        const url = `${SCRIPT_URL}?action=leaderboard&date=${state.todayDate}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.leaderboard || [];
+      } catch (e) {
+        console.error('API error:', e);
+        return [];
+      }
+    }
+
+    // Get tile from point
+    function getTileFromPoint(x, y) {
+      for (let i = 0; i < tileElements.length; i++) {
+        const rect = tileElements[i].getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    // Handle drag start
+    function handleDragStart(index, e) {
+      if (state.gameState !== 'playing' || state.inputMode !== 'swipe') return;
+      e.preventDefault();
+      state.isDragging = true;
+      state.selectedPath = [index];
+      state.currentWord = state.board[index];
+      render();
+    }
+
+    // Handle drag move
+    function handleDragMove(e) {
+      if (!state.isDragging || state.gameState !== 'playing' || state.inputMode !== 'swipe') return;
+      e.preventDefault();
+      
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const index = getTileFromPoint(clientX, clientY);
+      
+      if (index === -1) return;
+      
+      // Backtracking
+      if (state.selectedPath.length >= 2 && index === state.selectedPath[state.selectedPath.length - 2]) {
+        state.selectedPath = state.selectedPath.slice(0, -1);
+        state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+        render();
+        return;
+      }
+      
+      // Add new tile
+      if (!state.selectedPath.includes(index) && areAdjacent(state.selectedPath[state.selectedPath.length - 1], index)) {
+        state.selectedPath.push(index);
+        state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+        render();
+      }
+    }
+
+    // Handle drag end
+    function handleDragEnd() {
+      if (!state.isDragging) return;
+      state.isDragging = false;
+      if (state.selectedPath.length > 0 && state.currentWord.length >= 3) {
+        submitWord();
+      } else {
+        clearSelection();
+      }
+    }
+
+    // Handle tile click (tap mode)
+    function handleTileClick(index) {
+      if (state.gameState !== 'playing' || state.inputMode !== 'tap') return;
+      
+      if (state.selectedPath.length === 0) {
+        state.selectedPath = [index];
+        state.currentWord = state.board[index];
+      } else if (state.selectedPath.includes(index)) {
+        if (state.selectedPath[state.selectedPath.length - 1] === index && state.selectedPath.length > 1) {
+          state.selectedPath = state.selectedPath.slice(0, -1);
+          state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+        } else if (state.selectedPath.length === 1) {
+          clearSelection();
+        }
+      } else if (areAdjacent(state.selectedPath[state.selectedPath.length - 1], index)) {
+        state.selectedPath.push(index);
+        state.currentWord += state.board[index];
+      }
+      render();
+    }
+
+    // Clear selection
+    function clearSelection() {
+      state.selectedPath = [];
+      state.currentWord = '';
+      render();
+    }
+
+    // Submit word
+    function submitWord() {
+      const word = state.inputMode === 'type' ? state.typedWord.toLowerCase() : state.currentWord.toLowerCase();
+      
+      if (word.length < 3) {
+        showMessage('Words must be at least 3 letters');
+        clearSelection();
+        state.typedWord = '';
+        render();
+        return;
+      }
+      
+      if (state.foundWords.includes(word)) {
+        showMessage('Already found!');
+        clearSelection();
+        state.typedWord = '';
+        render();
+        return;
+      }
+      
+      if (!DICTIONARY.has(word)) {
+        showMessage('Not in dictionary');
+        clearSelection();
+        state.typedWord = '';
+        render();
+        return;
+      }
+      
+      if (state.inputMode === 'type' && !canFormWord(word, state.board)) {
+        showMessage('Cannot form on board');
+        state.typedWord = '';
+        render();
+        return;
+      }
+      
+      const wordScore = getWordScore(word);
+      state.foundWords.push(word);
+      state.score += wordScore;
+      showMessage(`+${wordScore} points!`);
+      clearSelection();
+      state.typedWord = '';
+      render();
+    }
+
+    // Show message
+    function showMessage(msg) {
+      state.message = msg;
+      render();
+      setTimeout(() => {
+        state.message = '';
+        render();
+      }, 1500);
+    }
+
+    // Format time
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // Share results
+    function shareResults() {
+      const shareText = `🎲 Daily Boggle ${state.todayDate}\n${state.score} points`;
+      
+      if (navigator.share) {
+        navigator.share({ text: shareText }).catch(() => copyToClipboard(shareText));
+      } else {
+        copyToClipboard(shareText);
+      }
+    }
+
+    // Copy to clipboard
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text);
+      showMessage('Copied to clipboard!');
+    }
+
+    // Login
+    async function handleLogin() {
+      const nameInput = document.getElementById('playerName');
+      const name = nameInput.value.trim();
+      if (!name) return;
+      
+      state.playerName = name;
+      localStorage.setItem('boggle_player', name);
+      
+      // Check if already played
+      const check = await checkPlayer(name);
+      state.leaderboard = await getLeaderboard();
+      
+      if (check.played) {
+        state.score = check.score;
+        state.foundWords = [];
+        state.gameState = 'finished';
+        showMessage("You've already played today!");
+      } else {
+        state.gameState = 'ready';
+      }
+      render();
+    }
+
+    // Start game
+    function startGame() {
+      state.gameState = 'playing';
+      state.foundWords = [];
+      state.score = 0;
+      state.timeLeft = 180;
+      state.message = '';
+      
+      state.timerInterval = setInterval(() => {
+        state.timeLeft--;
+        if (state.timeLeft <= 0) {
+          endGame();
+        }
+        render();
+      }, 1000);
+      
+      render();
+    }
+
+    // End game
+    async function endGame() {
+      clearInterval(state.timerInterval);
+      state.gameState = 'finished';
+      clearSelection();
+      
+      await saveScore(state.playerName, state.score, state.foundWords.length);
+      state.leaderboard = await getLeaderboard();
+      
+      render();
+    }
+
+    // Set input mode
+    function setInputMode(mode) {
+      state.inputMode = mode;
+      state.typedWord = '';
+      clearSelection();
+    }
+
+    // Render
+    function render() {
+      const app = document.getElementById('app');
+      
+      // Login screen
+      if (state.gameState === 'login') {
+        app.innerHTML = `
+          <div class="min-h-screen flex items-center justify-center p-4">
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-8 max-w-sm w-full text-center">
+              <h1 class="text-3xl font-bold text-white mb-2">Daily Boggle</h1>
+              <p class="text-blue-100 mb-6">${state.todayDate}</p>
+              <input 
+                type="text" 
+                id="playerName" 
+                placeholder="Enter your name"
+                value="${state.playerName}"
+                class="w-full px-4 py-3 rounded-xl text-lg text-center outline-none mb-4"
+                onkeypress="if(event.key==='Enter')handleLogin()"
+              />
+              <button 
+                onclick="handleLogin()"
+                class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                Play
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `<div class="max-w-md mx-auto p-4">`;
+      
+      // Header
+      html += `
+        <div class="text-center mb-4">
+          <h1 class="text-3xl font-bold text-white mb-1">Daily Boggle</h1>
+          <p class="text-blue-100 text-sm">${state.todayDate} • ${state.playerName}</p>
+        </div>
+      `;
+      
+      // Timer and Score (playing)
+      if (state.gameState === 'playing') {
+        html += `
+          <div class="flex justify-between items-center mb-4 px-2">
+            <div class="text-2xl font-mono font-bold ${state.timeLeft <= 30 ? 'text-red-300' : 'text-white'}">
+              ⏱ ${formatTime(state.timeLeft)}
+            </div>
+            <div class="text-2xl font-bold text-yellow-300">${state.score} pts</div>
+          </div>
+        `;
+      }
+      
+      // Game Board
+      html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 select-none"><div class="grid grid-cols-4 gap-2">`;
+      
+      state.board.forEach((letter, index) => {
+        const isSelected = state.selectedPath.includes(index);
+        const isLast = state.selectedPath[state.selectedPath.length - 1] === index;
+        
+        let tileClass = 'aspect-square rounded-xl text-2xl font-bold transition-all duration-100 select-none tile ';
+        if (isSelected) {
+          tileClass += isLast ? 'bg-yellow-400 text-green-900 scale-110 shadow-lg ring-4 ring-yellow-300' : 'bg-teal-400 text-white';
+        } else {
+          tileClass += 'bg-white text-green-800';
+        }
+        if (state.gameState !== 'playing') tileClass += ' opacity-75';
+        
+        html += `<button class="${tileClass}" data-index="${index}">${letter}</button>`;
+      });
+      
+      html += `</div></div>`;
+      
+      // Input area (playing)
+      if (state.gameState === 'playing') {
+        html += `
+          <div class="mb-4">
+            <div class="flex justify-center gap-2 mb-3">
+              <button onclick="setInputMode('swipe')" class="px-4 py-1 rounded-full text-sm font-medium transition-colors ${state.inputMode === 'swipe' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Swipe</button>
+              <button onclick="setInputMode('tap')" class="px-4 py-1 rounded-full text-sm font-medium transition-colors ${state.inputMode === 'tap' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Tap</button>
+              <button onclick="setInputMode('type')" class="px-4 py-1 rounded-full text-sm font-medium transition-colors ${state.inputMode === 'type' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Type</button>
+            </div>
+        `;
+        
+        if (state.inputMode === 'type') {
+          html += `
+            <div class="flex gap-2">
+              <input type="text" id="typeInput" value="${state.typedWord}" placeholder="Type a word..." 
+                class="flex-1 bg-white/20 rounded-xl px-4 py-3 text-white text-xl font-bold placeholder-white/50 outline-none focus:bg-white/30"
+                autocomplete="off" autocapitalize="off" />
+              <button onclick="submitWord()" class="px-6 bg-green-500 hover:bg-green-400 disabled:bg-gray-500 disabled:opacity-50 rounded-xl text-white font-bold transition-colors">✓</button>
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="flex gap-2">
+              <div class="flex-1 bg-white/20 rounded-xl px-4 py-3 text-center min-h-[52px] flex items-center justify-center">
+                <span class="text-2xl font-bold text-white tracking-wider">${state.currentWord || (state.inputMode === 'swipe' ? 'Swipe letters...' : 'Tap letters...')}</span>
+              </div>
+              ${state.inputMode === 'tap' ? `
+                <button onclick="submitWord()" class="px-6 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">✓</button>
+                <button onclick="clearSelection()" class="px-4 bg-red-500 hover:bg-red-400 rounded-xl text-white font-bold transition-colors">✕</button>
+              ` : ''}
+            </div>
+          `;
+        }
+        html += `</div>`;
+      }
+      
+      // Message
+      if (state.message) {
+        html += `<div class="text-center mb-4"><span class="bg-white/20 text-white px-4 py-2 rounded-full font-medium">${state.message}</span></div>`;
+      }
+      
+      // Ready state
+      if (state.gameState === 'ready') {
+        html += `
+          <div class="text-center">
+            <p class="text-green-100 mb-4">Find as many words as you can in 3 minutes!<br/>Swipe across adjacent letters to form words.</p>
+            <button onclick="startGame()" class="px-8 py-4 bg-green-500 hover:bg-green-400 rounded-2xl text-white text-xl font-bold transition-colors shadow-lg">Start Game</button>
+          </div>
+        `;
+      }
+      
+      // Finished state
+      if (state.gameState === 'finished') {
+        html += `
+          <div class="text-center">
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-6 mb-4">
+              <h2 class="text-xl font-bold text-white mb-2">${state.foundWords.length > 0 ? "Time's Up!" : "Today's Results"}</h2>
+              <div class="text-4xl font-bold text-yellow-300 mb-2">${state.score} pts</div>
+              <p class="text-green-100">${state.foundWords.length} words found</p>
+            </div>
+            <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors mb-4">Share Results</button>
+        `;
+        
+        // Leaderboard
+        if (state.leaderboard.length > 0) {
+          html += `
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-4 mt-4">
+              <h3 class="text-white font-bold mb-2">Today's Leaderboard</h3>
+              <div class="space-y-2">
+          `;
+          state.leaderboard.forEach((entry, i) => {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+            html += `<div class="flex justify-between text-white"><span>${medal} ${entry.player}</span><span class="text-yellow-300">${entry.score} pts</span></div>`;
+          });
+          html += `</div></div>`;
+        }
+        
+        html += `</div>`;
+      }
+      
+      // Found words
+      if (state.foundWords.length > 0) {
+        const sorted = [...state.foundWords].sort((a, b) => getWordScore(b) - getWordScore(a));
+        html += `
+          <div class="mt-4 bg-white/10 backdrop-blur rounded-2xl p-4">
+            <h3 class="text-white font-bold mb-2">Found Words (${state.foundWords.length})</h3>
+            <div class="flex flex-wrap gap-2">
+              ${sorted.map(word => `<span class="bg-white/20 text-white px-2 py-1 rounded text-sm">${word.toUpperCase()} <span class="text-yellow-300">+${getWordScore(word)}</span></span>`).join('')}
+            </div>
+          </div>
+        `;
+      }
+      
+      // Scoring guide
+      html += `<div class="mt-4 text-center text-green-200 text-xs"><p>3-4 letters: 1pt • 5: 2pts • 6: 3pts • 7: 5pts • 8+: 11pts</p></div>`;
+      
+      html += `</div>`;
+      app.innerHTML = html;
+      
+      // Attach event listeners to tiles
+      tileElements = document.querySelectorAll('[data-index]');
+      tileElements.forEach(tile => {
+        const index = parseInt(tile.dataset.index);
+        tile.addEventListener('mousedown', (e) => handleDragStart(index, e));
+        tile.addEventListener('touchstart', (e) => handleDragStart(index, e), { passive: false });
+        tile.addEventListener('click', () => handleTileClick(index));
+      });
+      
+      // Type input listener
+      const typeInput = document.getElementById('typeInput');
+      if (typeInput) {
+        typeInput.addEventListener('input', (e) => {
+          state.typedWord = e.target.value.toLowerCase();
+        });
+        typeInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') submitWord();
+        });
+        typeInput.focus();
+      }
+    }
+
+    // Global event listeners
+    document.addEventListener('mousemove', handleDragMove);
+    document.addEventListener('mouseup', handleDragEnd);
+    document.addEventListener('mouseleave', handleDragEnd);
+    document.addEventListener('touchmove', handleDragMove, { passive: false });
+    document.addEventListener('touchend', handleDragEnd);
+
+    // Make functions global
+    window.handleLogin = handleLogin;
+    window.startGame = startGame;
+    window.submitWord = submitWord;
+    window.clearSelection = clearSelection;
+    window.setInputMode = setInputMode;
+    window.shareResults = shareResults;
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
