@@ -16,7 +16,7 @@
   <style>
     * { -webkit-tap-highlight-color: transparent; font-family: 'Nunito', sans-serif; }
     body { touch-action: manipulation; }
-    .tile { touch-action: none; user-select: none; }
+    .tile { touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
     .tile-pop { animation: pop 0.15s ease-out; }
     @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1.1); } }
     .tile-shake { animation: shake 0.4s ease-out; }
@@ -202,7 +202,8 @@
       typedWord: '',
       isDragging: false,
       leaderboard: [],
-      timerInterval: null
+      timerInterval: null,
+      lastTouchTime: 0
     };
 
     // Initialize board
@@ -244,8 +245,13 @@
       }
     }
 
-    // Get tile from point
+    // Get tile from point - improved for mobile
     function getTileFromPoint(x, y) {
+      const el = document.elementFromPoint(x, y);
+      if (el && el.dataset && el.dataset.index !== undefined) {
+        return parseInt(el.dataset.index);
+      }
+      // Fallback to bounds checking
       for (let i = 0; i < tileElements.length; i++) {
         const rect = tileElements[i].getBoundingClientRect();
         if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
@@ -255,47 +261,102 @@
       return -1;
     }
 
+    // Update tile visuals without full re-render
+    function updateTileVisuals() {
+      tileElements.forEach((tile, index) => {
+        const isSelected = state.selectedPath.includes(index);
+        const isLast = state.selectedPath[state.selectedPath.length - 1] === index;
+
+        tile.className = 'aspect-square rounded-xl text-2xl font-bold transition-all duration-100 select-none tile ';
+        if (isSelected) {
+          tile.className += isLast ? 'bg-yellow-400 text-green-900 scale-110 shadow-lg ring-4 ring-yellow-300' : 'bg-teal-400 text-white';
+        } else {
+          tile.className += 'bg-white text-green-800';
+        }
+        if (state.gameState !== 'playing') tile.className += ' opacity-75';
+      });
+
+      // Update current word display
+      const wordDisplay = document.getElementById('currentWordDisplay');
+      if (wordDisplay) {
+        wordDisplay.textContent = state.currentWord || (state.inputMode === 'swipe' ? 'Swipe letters...' : 'Tap letters...');
+      }
+
+      // Update swipe lines
+      updateSwipeLines();
+    }
+
+    // Update swipe lines SVG
+    function updateSwipeLines() {
+      const svg = document.getElementById('swipeSvg');
+      if (!svg) return;
+
+      if (state.selectedPath.length > 1) {
+        let lines = '';
+        for (let i = 0; i < state.selectedPath.length - 1; i++) {
+          const from = tileElements[state.selectedPath[i]];
+          const to = tileElements[state.selectedPath[i + 1]];
+          if (from && to) {
+            const svgRect = svg.getBoundingClientRect();
+            const fromRect = from.getBoundingClientRect();
+            const toRect = to.getBoundingClientRect();
+            const x1 = fromRect.left + fromRect.width / 2 - svgRect.left;
+            const y1 = fromRect.top + fromRect.height / 2 - svgRect.top;
+            const x2 = toRect.left + toRect.width / 2 - svgRect.left;
+            const y2 = toRect.top + toRect.height / 2 - svgRect.top;
+            lines += '<line class="swipe-line" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
+          }
+        }
+        svg.innerHTML = lines;
+      } else {
+        svg.innerHTML = '';
+      }
+    }
+
     // Handle drag start
     function handleDragStart(index, e) {
       if (state.gameState !== 'playing' || state.inputMode !== 'swipe') return;
       e.preventDefault();
+      e.stopPropagation();
       state.isDragging = true;
+      state.lastTouchTime = Date.now();
       state.selectedPath = [index];
       state.currentWord = state.board[index];
-      render();
+      updateTileVisuals();
     }
 
     // Handle drag move
     function handleDragMove(e) {
       if (!state.isDragging || state.gameState !== 'playing' || state.inputMode !== 'swipe') return;
       e.preventDefault();
-      
+
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       const index = getTileFromPoint(clientX, clientY);
-      
+
       if (index === -1) return;
-      
+
       // Backtracking
       if (state.selectedPath.length >= 2 && index === state.selectedPath[state.selectedPath.length - 2]) {
         state.selectedPath = state.selectedPath.slice(0, -1);
         state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
-        render();
+        updateTileVisuals();
         return;
       }
-      
+
       // Add new tile
       if (!state.selectedPath.includes(index) && areAdjacent(state.selectedPath[state.selectedPath.length - 1], index)) {
         state.selectedPath.push(index);
         state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
-        render();
+        updateTileVisuals();
       }
     }
 
     // Handle drag end
-    function handleDragEnd() {
+    function handleDragEnd(e) {
       if (!state.isDragging) return;
       state.isDragging = false;
+      state.lastTouchTime = Date.now();
       if (state.selectedPath.length > 0 && state.currentWord.length >= 3) {
         submitWord();
       } else {
@@ -303,10 +364,21 @@
       }
     }
 
-    // Handle tile click (tap mode)
-    function handleTileClick(index) {
+    // Handle tile tap (for tap mode)
+    function handleTileTap(index, e) {
+      // Prevent ghost clicks after touch
+      if (e.type === 'click' && Date.now() - state.lastTouchTime < 500) {
+        e.preventDefault();
+        return;
+      }
+
       if (state.gameState !== 'playing' || state.inputMode !== 'tap') return;
-      
+
+      if (e.type === 'touchstart') {
+        e.preventDefault();
+        state.lastTouchTime = Date.now();
+      }
+
       if (state.selectedPath.length === 0) {
         state.selectedPath = [index];
         state.currentWord = state.board[index];
@@ -315,13 +387,14 @@
           state.selectedPath = state.selectedPath.slice(0, -1);
           state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
         } else if (state.selectedPath.length === 1) {
-          clearSelection();
+          state.selectedPath = [];
+          state.currentWord = '';
         }
       } else if (areAdjacent(state.selectedPath[state.selectedPath.length - 1], index)) {
         state.selectedPath.push(index);
         state.currentWord += state.board[index];
       }
-      render();
+      updateTileVisuals();
     }
 
     // Clear selection
@@ -571,7 +644,7 @@
           html += `
             <div class="flex gap-2">
               <div class="flex-1 bg-white/20 rounded-xl px-4 py-3 text-center min-h-[52px] flex items-center justify-center">
-                <span class="text-2xl font-bold text-white tracking-wider">${state.currentWord || (state.inputMode === 'swipe' ? 'Swipe letters...' : 'Tap letters...')}</span>
+                <span id="currentWordDisplay" class="text-2xl font-bold text-white tracking-wider">${state.currentWord || (state.inputMode === 'swipe' ? 'Swipe letters...' : 'Tap letters...')}</span>
               </div>
               ${state.inputMode === 'tap' ? `
                 <button onclick="submitWord()" class="px-6 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">✓</button>
@@ -647,12 +720,20 @@
       app.innerHTML = html;
       
       // Attach event listeners to tiles
-      tileElements = document.querySelectorAll('[data-index]');
+      tileElements = Array.from(document.querySelectorAll('[data-index]'));
       tileElements.forEach(tile => {
         const index = parseInt(tile.dataset.index);
+        // Swipe mode handlers
         tile.addEventListener('mousedown', (e) => handleDragStart(index, e));
-        tile.addEventListener('touchstart', (e) => handleDragStart(index, e), { passive: false });
-        tile.addEventListener('click', () => handleTileClick(index));
+        tile.addEventListener('touchstart', (e) => {
+          if (state.inputMode === 'swipe') {
+            handleDragStart(index, e);
+          } else if (state.inputMode === 'tap') {
+            handleTileTap(index, e);
+          }
+        }, { passive: false });
+        // Click handler for tap mode (desktop)
+        tile.addEventListener('click', (e) => handleTileTap(index, e));
       });
       
       // Type input listener
@@ -667,30 +748,8 @@
         typeInput.focus();
       }
 
-      // Draw swipe lines
-      setTimeout(() => {
-        const svg = document.getElementById('swipeSvg');
-        if (svg && state.selectedPath.length > 1) {
-          let lines = '';
-          for (let i = 0; i < state.selectedPath.length - 1; i++) {
-            const from = document.querySelector('[data-index="' + state.selectedPath[i] + '"]');
-            const to = document.querySelector('[data-index="' + state.selectedPath[i + 1] + '"]');
-            if (from && to) {
-              const svgRect = svg.getBoundingClientRect();
-              const fromRect = from.getBoundingClientRect();
-              const toRect = to.getBoundingClientRect();
-              const x1 = fromRect.left + fromRect.width / 2 - svgRect.left;
-              const y1 = fromRect.top + fromRect.height / 2 - svgRect.top;
-              const x2 = toRect.left + toRect.width / 2 - svgRect.left;
-              const y2 = toRect.top + toRect.height / 2 - svgRect.top;
-              lines += '<line class="swipe-line" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
-            }
-          }
-          svg.innerHTML = lines;
-        } else if (svg) {
-          svg.innerHTML = '';
-        }
-      }, 0);
+      // Draw swipe lines after DOM is ready
+      setTimeout(() => updateSwipeLines(), 0);
     }
 
     // Global event listeners
@@ -699,6 +758,7 @@
     document.addEventListener('mouseleave', handleDragEnd);
     document.addEventListener('touchmove', handleDragMove, { passive: false });
     document.addEventListener('touchend', handleDragEnd);
+    document.addEventListener('touchcancel', handleDragEnd);
 
     // Make functions global
     window.handleLogin = handleLogin;
