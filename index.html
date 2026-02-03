@@ -767,6 +767,16 @@
       startGame();
     }
 
+    // Remove word and recalculate score (practice mode)
+    function removeWord(word) {
+      const index = state.foundWords.indexOf(word);
+      if (index > -1) {
+        state.foundWords.splice(index, 1);
+        state.score = state.foundWords.reduce((total, w) => total + getWordScore(w), 0);
+        render();
+      }
+    }
+
     // End game
     async function endGame() {
       clearInterval(state.timerInterval);
@@ -1015,11 +1025,15 @@
       // Found words
       if (state.foundWords.length > 0) {
         const sorted = [...state.foundWords].sort((a, b) => getWordScore(b) - getWordScore(a));
+        const canRemove = state.practiceMode && state.gameState === 'finished';
         html += `
           <div class="mt-4 bg-white/10 backdrop-blur rounded-2xl p-4">
-            <h3 class="text-white font-bold mb-2">Found Words (${state.foundWords.length})</h3>
+            <h3 class="text-white font-bold mb-2">Found Words (${state.foundWords.length})${canRemove ? ' <span class="font-normal text-white/50 text-sm">- tap to remove</span>' : ''}</h3>
             <div class="flex flex-wrap gap-2">
-              ${sorted.map(word => `<span class="bg-white/20 text-white px-2 py-1 rounded text-sm">${word.toUpperCase()} <span class="text-yellow-300">+${getWordScore(word)}</span></span>`).join('')}
+              ${sorted.map(word => canRemove
+                ? `<button onclick="removeWord('${word}')" class="bg-white/20 hover:bg-red-500/50 text-white px-2 py-1 rounded text-sm transition-colors">${word.toUpperCase()} <span class="text-yellow-300">+${getWordScore(word)}</span> <span class="text-red-300 ml-1">✕</span></button>`
+                : `<span class="bg-white/20 text-white px-2 py-1 rounded text-sm">${word.toUpperCase()} <span class="text-yellow-300">+${getWordScore(word)}</span></span>`
+              ).join('')}
             </div>
           </div>
         `;
@@ -1085,6 +1099,7 @@
     window.copyPracticeCode = copyPracticeCode;
     window.generateRandomBoard = generateRandomBoard;
     window.replayBoard = replayBoard;
+    window.removeWord = removeWord;
 
     // Initial render
     render();
