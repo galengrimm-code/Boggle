@@ -761,6 +761,16 @@
       startGame();
     }
 
+    // New game session (go back to ready screen to enter code)
+    function newGameSession() {
+      state.board = generateRandomBoard();
+      state.possibleWords = null;
+      state.foundWords = [];
+      state.score = 0;
+      state.gameState = 'ready';
+      render();
+    }
+
     // End game
     async function endGame() {
       clearInterval(state.timerInterval);
@@ -935,9 +945,7 @@
               <p class="text-white/50 text-xs mb-3">Share this code so others get the same board</p>
               <div class="flex justify-center items-center gap-2">
                 <input type="text" id="practiceCodeInput" placeholder="Enter code" maxlength="5"
-                  class="w-24 px-3 py-2 rounded-lg text-center font-mono text-lg outline-none"
-                  onkeypress="if(event.key==='Enter')loadBoardFromCode()" />
-                <button onclick="loadBoardFromCode()" class="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm transition-colors">Load</button>
+                  class="w-28 px-3 py-2 rounded-lg text-center font-mono text-lg outline-none" />
                 <button onclick="state.board = generateRandomBoard(); render();" class="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm transition-colors">New</button>
               </div>
             </div>
@@ -985,7 +993,10 @@
               </p>
             </div>
             <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors mb-4">Share Results</button>
-            ${state.practiceMode ? `<button onclick="playAgain()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Play Again</button>` : ''}
+            ${state.practiceMode ? `
+              <button onclick="playAgain()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Play Again</button>
+              <button onclick="newGameSession()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors mb-4 ml-2">New Game</button>
+            ` : ''}
         `;
         
         // Leaderboard
@@ -1077,6 +1088,7 @@
     window.loadBoardFromCode = loadBoardFromCode;
     window.copyPracticeCode = copyPracticeCode;
     window.generateRandomBoard = generateRandomBoard;
+    window.newGameSession = newGameSession;
 
     // Initial render
     render();
