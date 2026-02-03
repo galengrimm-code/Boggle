@@ -205,7 +205,11 @@
       isDragging: false,
       leaderboard: [],
       timerInterval: null,
-      lastTouchTime: 0
+      lastTouchTime: 0,
+      lastTouchX: 0,
+      lastTouchY: 0,
+      pendingTile: null,
+      pendingTimeout: null
     };
 
     // Initialize board
@@ -324,10 +328,32 @@
       state.lastTouchTime = Date.now();
       state.selectedPath = [index];
       state.currentWord = state.board[index];
+      state.pendingTile = null;
+      clearTimeout(state.pendingTimeout);
+      // Set initial touch position
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      state.lastTouchX = clientX;
+      state.lastTouchY = clientY;
       updateTileVisuals();
     }
 
-    // Handle drag move
+    // Check if tile is diagonal from another
+    function isDiagonal(pos1, pos2) {
+      const row1 = Math.floor(pos1 / 4), col1 = pos1 % 4;
+      const row2 = Math.floor(pos2 / 4), col2 = pos2 % 4;
+      return Math.abs(row1 - row2) === 1 && Math.abs(col1 - col2) === 1;
+    }
+
+    // Get tile center position
+    function getTileCenterPos(index) {
+      const tile = tileElements[index];
+      if (!tile) return null;
+      const rect = tile.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+
+    // Handle drag move with diagonal preference
     function handleDragMove(e) {
       if (!state.isDragging || state.gameState !== 'playing' || state.inputMode !== 'swipe') return;
       e.preventDefault();
@@ -338,15 +364,81 @@
 
       if (index === -1) return;
 
+      const lastIndex = state.selectedPath[state.selectedPath.length - 1];
+
       // Backtracking
       if (state.selectedPath.length >= 2 && index === state.selectedPath[state.selectedPath.length - 2]) {
+        clearTimeout(state.pendingTimeout);
+        state.pendingTile = null;
         state.selectedPath = state.selectedPath.slice(0, -1);
         state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
         updateTileVisuals();
+        state.lastTouchX = clientX;
+        state.lastTouchY = clientY;
         return;
       }
 
-      // Add new tile
+      // Skip if already selected or not adjacent
+      if (state.selectedPath.includes(index) || !areAdjacent(lastIndex, index)) {
+        state.lastTouchX = clientX;
+        state.lastTouchY = clientY;
+        return;
+      }
+
+      // Calculate swipe direction
+      const dx = clientX - state.lastTouchX;
+      const dy = clientY - state.lastTouchY;
+      const swipeAngle = Math.abs(dx) > 0 || Math.abs(dy) > 0 ? Math.atan2(Math.abs(dy), Math.abs(dx)) : 0;
+      const isDiagonalSwipe = swipeAngle > 0.3 && swipeAngle < 1.27; // ~17° to ~73°
+
+      // If this is an orthogonal tile but we're swiping diagonally, delay adding it
+      const isTileDiagonal = isDiagonal(lastIndex, index);
+
+      if (!isTileDiagonal && isDiagonalSwipe && Math.abs(dx) > 5 && Math.abs(dy) > 5) {
+        // Check if there's a diagonal neighbor in our swipe direction
+        const lastPos = getTileCenterPos(lastIndex);
+        if (lastPos) {
+          for (let i = 0; i < 16; i++) {
+            if (!state.selectedPath.includes(i) && areAdjacent(lastIndex, i) && isDiagonal(lastIndex, i)) {
+              const diagPos = getTileCenterPos(i);
+              if (diagPos) {
+                // Check if diagonal tile is in our swipe direction
+                const toDiagX = diagPos.x - lastPos.x;
+                const toDiagY = diagPos.y - lastPos.y;
+                if ((dx > 0) === (toDiagX > 0) && (dy > 0) === (toDiagY > 0)) {
+                  // We're swiping toward a diagonal - wait before adding orthogonal
+                  state.pendingTile = index;
+                  clearTimeout(state.pendingTimeout);
+                  state.pendingTimeout = setTimeout(() => {
+                    if (state.pendingTile === index && state.isDragging) {
+                      addTileToPath(index);
+                      state.pendingTile = null;
+                    }
+                  }, 80);
+                  state.lastTouchX = clientX;
+                  state.lastTouchY = clientY;
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Clear any pending tile if we're adding a different one
+      if (state.pendingTile !== null && state.pendingTile !== index) {
+        clearTimeout(state.pendingTimeout);
+        state.pendingTile = null;
+      }
+
+      // Add tile immediately
+      addTileToPath(index);
+      state.lastTouchX = clientX;
+      state.lastTouchY = clientY;
+    }
+
+    // Add tile to path helper
+    function addTileToPath(index) {
       if (!state.selectedPath.includes(index) && areAdjacent(state.selectedPath[state.selectedPath.length - 1], index)) {
         state.selectedPath.push(index);
         state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
@@ -359,6 +451,9 @@
       if (!state.isDragging) return;
       state.isDragging = false;
       state.lastTouchTime = Date.now();
+      // Clear pending tile
+      clearTimeout(state.pendingTimeout);
+      state.pendingTile = null;
       if (state.selectedPath.length > 0 && state.currentWord.length >= 3) {
         submitWord();
       } else {
@@ -512,7 +607,7 @@
       // Word length stars
       const stars = '⬛'.repeat(Math.min(longestLen, 8));
 
-      const shareText = `🎲 Daily Boggle 🎲\n📅 ${state.todayDate}\n${scoreEmoji} ${state.score} points\n📏 Longest: ${longestLen} letters\n${stars}\n\nPlay at boggle-eight.vercel.app`;
+      const shareText = `🎲 Daily Boggle 🎲\n📅 ${state.todayDate}\n${scoreEmoji} ${state.score} points\n📏 Longest: ${longestLen} letters\n${stars}`;
 
       if (navigator.share) {
         navigator.share({ text: shareText }).catch(() => copyToClipboard(shareText));
