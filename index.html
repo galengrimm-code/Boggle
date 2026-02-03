@@ -846,8 +846,8 @@
         `;
       }
 
-      // Game Board (show during playing, finished, and ready state in practice mode)
-      if (state.gameState === 'playing' || state.gameState === 'finished' || (state.gameState === 'ready' && state.practiceMode)) {
+      // Game Board (only show during playing and finished)
+      if (state.gameState === 'playing' || state.gameState === 'finished') {
         html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 select-none board-container"><svg class="swipe-svg" id="swipeSvg"></svg><div class="grid grid-cols-4 gap-2">`;
 
         state.board.forEach((letter, index) => {
