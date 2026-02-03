@@ -440,20 +440,42 @@
       }
       
       const wordScore = getWordScore(word);
+      const pathCopy = [...state.selectedPath];
+      const lastTile = getTileCenter(pathCopy[pathCopy.length - 1] || 0);
+
       state.foundWords.push(word);
       state.score += wordScore;
-      const lastTile = getTileCenter(state.selectedPath[state.selectedPath.length - 1] || 0);
+
+      // Quick visual updates
       showFloatingPoints(wordScore, lastTile.x - 20, lastTile.y - 20);
-      animateTiles([...state.selectedPath], 'tile-bounce');
-      showMessage('');
-      clearSelection();
+      animateTiles(pathCopy, 'tile-bounce');
+      updateScoreDisplay();
+
+      // Clear and update
+      state.selectedPath = [];
+      state.currentWord = '';
       state.typedWord = '';
+      updateTileVisuals();
+
+      // Full render to update found words list
       render();
+    }
+
+    // Quick score update without full render
+    function updateScoreDisplay() {
+      const scoreEl = document.getElementById('scoreDisplay');
+      if (scoreEl) scoreEl.textContent = state.score + ' pts';
     }
 
     // Show message
     function showMessage(msg) {
       state.message = msg;
+      // Update message element directly if it exists
+      const msgEl = document.getElementById('messageDisplay');
+      if (msgEl) {
+        msgEl.innerHTML = msg ? `<span class="bg-white/20 text-white px-4 py-2 rounded-full font-medium">${msg}</span>` : '';
+        return;
+      }
       render();
       setTimeout(() => {
         state.message = '';
@@ -479,7 +501,16 @@
       });
       const longestLen = longestWord ? longestWord.replace(/qu/gi, 'Q').length : 0;
 
-      const shareText = `Daily Boggle\n${state.todayDate}\n${state.score} points\nLongest word: ${longestLen} letters`;
+      // Score emoji based on performance
+      let scoreEmoji = '🎯';
+      if (state.score >= 100) scoreEmoji = '🏆';
+      else if (state.score >= 50) scoreEmoji = '🔥';
+      else if (state.score >= 25) scoreEmoji = '⭐';
+
+      // Word length stars
+      const stars = '⬛'.repeat(Math.min(longestLen, 8));
+
+      const shareText = `🎲 Daily Boggle 🎲\n📅 ${state.todayDate}\n${scoreEmoji} ${state.score} points\n📏 Longest: ${longestLen} letters\n${stars}\n\nPlay at boggle-eight.vercel.app`;
 
       if (navigator.share) {
         navigator.share({ text: shareText }).catch(() => copyToClipboard(shareText));
@@ -502,19 +533,35 @@
 
       state.playerName = name;
       localStorage.setItem('boggle_player', name);
-      
-      // Check if already played
-      const check = await checkPlayer(name);
-      state.leaderboard = await getLeaderboard();
-      
-      if (check.played) {
-        state.score = check.score;
-        state.foundWords = [];
-        state.gameState = 'finished';
-        showMessage("You've already played today!");
-      } else {
+
+      // Show loading state immediately
+      const btn = document.querySelector('button[onclick="handleLogin()"]');
+      if (btn) btn.textContent = 'Loading...';
+
+      // Run API calls in parallel with timeout
+      const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject('timeout'), ms));
+
+      try {
+        const [check, leaderboard] = await Promise.all([
+          Promise.race([checkPlayer(name), timeout(3000)]).catch(() => ({ played: false })),
+          Promise.race([getLeaderboard(), timeout(3000)]).catch(() => [])
+        ]);
+
+        state.leaderboard = leaderboard;
+
+        if (check.played) {
+          state.score = check.score;
+          state.foundWords = [];
+          state.gameState = 'finished';
+          showMessage("You've already played today!");
+        } else {
+          state.gameState = 'ready';
+        }
+      } catch (e) {
+        // If API fails, just let them play
         state.gameState = 'ready';
       }
+
       render();
     }
 
@@ -530,8 +577,14 @@
         state.timeLeft--;
         if (state.timeLeft <= 0) {
           endGame();
+        } else {
+          // Quick timer update without full render
+          const timerEl = document.getElementById('timerDisplay');
+          if (timerEl) {
+            timerEl.textContent = '⏱ ' + formatTime(state.timeLeft);
+            timerEl.className = 'text-2xl font-mono font-bold ' + (state.timeLeft <= 30 ? 'text-red-300 timer-urgent' : 'text-white');
+          }
         }
-        render();
       }, 1000);
       
       render();
@@ -542,11 +595,18 @@
       clearInterval(state.timerInterval);
       state.gameState = 'finished';
       clearSelection();
-      
-      await saveScore(state.playerName, state.score, state.foundWords.length);
-      state.leaderboard = await getLeaderboard();
-      
+
+      // Render finished state immediately, don't wait for API
       render();
+
+      // Save score and get leaderboard in background
+      try {
+        await saveScore(state.playerName, state.score, state.foundWords.length);
+        state.leaderboard = await getLeaderboard();
+        render(); // Re-render with leaderboard
+      } catch (e) {
+        console.error('Error saving score:', e);
+      }
     }
 
     // Set input mode
@@ -601,10 +661,10 @@
       if (state.gameState === 'playing') {
         html += `
           <div class="flex justify-between items-center mb-4 px-2">
-            <div class="text-2xl font-mono font-bold ${state.timeLeft <= 30 ? 'text-red-300 timer-urgent' : 'text-white'}">
+            <div id="timerDisplay" class="text-2xl font-mono font-bold ${state.timeLeft <= 30 ? 'text-red-300 timer-urgent' : 'text-white'}">
               ⏱ ${formatTime(state.timeLeft)}
             </div>
-            <div class="text-2xl font-bold text-yellow-300">${state.score} pts</div>
+            <div id="scoreDisplay" class="text-2xl font-bold text-yellow-300">${state.score} pts</div>
           </div>
         `;
       }
@@ -665,10 +725,8 @@
         html += `</div>`;
       }
       
-      // Message
-      if (state.message) {
-        html += `<div class="text-center mb-4"><span class="bg-white/20 text-white px-4 py-2 rounded-full font-medium">${state.message}</span></div>`;
-      }
+      // Message (always render container for quick updates)
+      html += `<div id="messageDisplay" class="text-center mb-4">${state.message ? `<span class="bg-white/20 text-white px-4 py-2 rounded-full font-medium">${state.message}</span>` : ''}</div>`;
       
       // Ready state
       if (state.gameState === 'ready') {
