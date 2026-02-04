@@ -664,13 +664,19 @@
       const msgEl = document.getElementById('messageDisplay');
       if (msgEl) {
         msgEl.innerHTML = msg ? `<span class="bg-white/20 text-white px-4 py-2 rounded-full font-medium">${msg}</span>` : '';
-        return;
-      }
-      render();
-      setTimeout(() => {
-        state.message = '';
+      } else {
         render();
-      }, 1500);
+      }
+      // Always clear message after 1.5 seconds
+      if (msg) {
+        setTimeout(() => {
+          state.message = '';
+          const el = document.getElementById('messageDisplay');
+          if (el) {
+            el.innerHTML = '';
+          }
+        }, 1500);
+      }
     }
 
     // Format time
