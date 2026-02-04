@@ -1103,6 +1103,13 @@
       const name = nameInput.value.trim();
       if (!name) return;
 
+      // Refresh date in case page was left open overnight
+      const currentDate = getTodayString();
+      if (state.todayDate !== currentDate) {
+        state.todayDate = currentDate;
+        state.board = generateDailyBoard(currentDate);
+      }
+
       state.playerName = name;
       localStorage.setItem('boggle_player', name);
 
