@@ -80,7 +80,15 @@ function checkPlay(player, date) {
   var data = sheet.getDataRange().getValues();
 
   for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === date && data[i][1].toLowerCase() === player.toLowerCase()) {
+    // Convert date to string for comparison (Google Sheets may auto-convert to Date object)
+    var storedDate = data[i][0];
+    if (storedDate instanceof Date) {
+      storedDate = Utilities.formatDate(storedDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else {
+      storedDate = String(storedDate);
+    }
+
+    if (storedDate === date && data[i][1].toLowerCase() === player.toLowerCase()) {
       return {
         played: true,
         score: data[i][2],
@@ -118,7 +126,15 @@ function getLeaderboard(date) {
   var scores = [];
 
   for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === date) {
+    // Convert date to string for comparison (Google Sheets may auto-convert to Date object)
+    var storedDate = data[i][0];
+    if (storedDate instanceof Date) {
+      storedDate = Utilities.formatDate(storedDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else {
+      storedDate = String(storedDate);
+    }
+
+    if (storedDate === date) {
       scores.push({
         player: data[i][1],
         score: data[i][2],
