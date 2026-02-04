@@ -17,18 +17,23 @@
   <script>tailwind.config = { corePlugins: { preflight: true } }</script>
   <style>
     * { -webkit-tap-highlight-color: transparent; font-family: 'Nunito', sans-serif; box-sizing: border-box; }
-    html, body {
-      touch-action: manipulation;
-      overscroll-behavior: none;
+    html {
       overflow-x: hidden;
-      -webkit-overflow-scrolling: touch;
+      overflow-y: auto;
     }
-    body { min-height: 100vh; min-height: -webkit-fill-available; }
+    body {
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: none;
+    }
     #app {
       transform: translateZ(0);
       -webkit-transform: translateZ(0);
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
+      min-height: 100vh;
+      padding-bottom: 20px;
     }
     .tile { touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; will-change: transform, background-color; }
     .tile-pop { animation: pop 0.15s ease-out; }
