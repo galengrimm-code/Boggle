@@ -1934,18 +1934,21 @@
       // Timer and Score (playing)
       if (state.gameState === 'playing') {
         html += `
-          <div class="flex justify-between items-center mb-4 px-2">
+          <div class="flex justify-between items-center mb-2 px-2">
             <div id="timerDisplay" class="text-2xl font-mono font-bold ${state.timeLeft <= 30 ? 'text-red-300 timer-urgent' : 'text-white'}">
               ⏱ ${formatTime(state.timeLeft)}
             </div>
-            <div id="scoreDisplay" class="text-2xl font-bold text-yellow-300">${state.score} pts</div>
+            <div class="flex items-center gap-3">
+              <div id="scoreDisplay" class="text-2xl font-bold text-yellow-300">${state.score} pts</div>
+              <button onclick="backToMenu()" class="text-white/70 hover:text-white text-xl">✕</button>
+            </div>
           </div>
         `;
       }
 
       // Game Board (only show during playing and finished)
       if (state.gameState === 'playing' || state.gameState === 'finished') {
-        html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 select-none board-container"><svg class="swipe-svg" id="swipeSvg"></svg><div class="grid grid-cols-4 gap-2">`;
+        html += `<div class="bg-white/10 backdrop-blur rounded-2xl p-3 mb-2 select-none board-container"><svg class="swipe-svg" id="swipeSvg"></svg><div class="grid grid-cols-4 gap-2">`;
 
         state.board.forEach((letter, index) => {
           const isSelected = state.selectedPath.includes(index);
@@ -1968,11 +1971,11 @@
       // Input area (playing)
       if (state.gameState === 'playing') {
         html += `
-          <div class="mb-4">
-            <div class="flex justify-center gap-2 mb-3">
-              <button onclick="setInputMode('swipe')" class="px-4 py-1 rounded-full text-sm font-medium transition-colors ${state.inputMode === 'swipe' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Swipe</button>
-              <button onclick="setInputMode('tap')" class="px-4 py-1 rounded-full text-sm font-medium transition-colors ${state.inputMode === 'tap' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Tap</button>
-              <button onclick="setInputMode('type')" class="px-4 py-1 rounded-full text-sm font-medium transition-colors ${state.inputMode === 'type' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Type</button>
+          <div class="mb-2">
+            <div class="flex justify-center gap-1 mb-2">
+              <button onclick="setInputMode('swipe')" class="px-3 py-1 rounded-full text-xs font-medium transition-colors ${state.inputMode === 'swipe' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Swipe</button>
+              <button onclick="setInputMode('tap')" class="px-3 py-1 rounded-full text-xs font-medium transition-colors ${state.inputMode === 'tap' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Tap</button>
+              <button onclick="setInputMode('type')" class="px-3 py-1 rounded-full text-xs font-medium transition-colors ${state.inputMode === 'type' ? 'bg-white text-green-800' : 'bg-white/20 text-white'}">Type</button>
             </div>
         `;
         
@@ -1988,12 +1991,12 @@
         } else {
           html += `
             <div class="flex gap-2">
-              <div class="flex-1 bg-white/20 rounded-xl px-4 py-3 text-center min-h-[52px] flex items-center justify-center">
-                <span id="currentWordDisplay" class="text-2xl font-bold text-white tracking-wider">${state.currentWord || (state.inputMode === 'swipe' ? 'Swipe letters...' : 'Tap letters...')}</span>
+              <div class="flex-1 bg-white/20 rounded-xl px-3 py-2 text-center min-h-[44px] flex items-center justify-center">
+                <span id="currentWordDisplay" class="text-xl font-bold text-white tracking-wider">${state.currentWord || (state.inputMode === 'swipe' ? 'Swipe letters...' : 'Tap letters...')}</span>
               </div>
               ${state.inputMode === 'tap' ? `
-                <button onclick="submitWord()" class="px-6 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">✓</button>
-                <button onclick="clearSelection()" class="px-4 bg-red-500 hover:bg-red-400 rounded-xl text-white font-bold transition-colors">✕</button>
+                <button onclick="submitWord()" class="px-5 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">✓</button>
+                <button onclick="clearSelection()" class="px-3 bg-red-500 hover:bg-red-400 rounded-xl text-white font-bold transition-colors">✕</button>
               ` : ''}
             </div>
           `;
@@ -2002,7 +2005,7 @@
       }
       
       // Message (always render container for quick updates)
-      html += `<div id="messageDisplay" class="text-center mb-4">${state.message ? `<span class="bg-white/20 text-white px-4 py-2 rounded-full font-medium">${state.message}</span>` : ''}</div>`;
+      html += `<div id="messageDisplay" class="text-center mb-2">${state.message ? `<span class="bg-white/20 text-white px-3 py-1 rounded-full text-sm font-medium">${state.message}</span>` : ''}</div>`;
       
       // Ready state
       if (state.gameState === 'ready') {
@@ -2102,8 +2105,8 @@
           ? [...state.foundWords].sort((a, b) => a.localeCompare(b))
           : [...state.foundWords].sort((a, b) => getWordScore(b) - getWordScore(a));
         html += `
-          <div class="mt-4 bg-white/10 backdrop-blur rounded-2xl p-4">
-            <h3 class="text-white font-bold mb-2">Found Words (${state.foundWords.length})${canRemove ? ' <span class="font-normal text-white/50 text-sm">- tap to remove</span>' : ''}</h3>
+          <div class="mt-2 bg-white/10 backdrop-blur rounded-2xl p-3">
+            <h3 class="text-white font-bold text-sm mb-2">Found Words (${state.foundWords.length})${canRemove ? ' <span class="font-normal text-white/50 text-sm">- tap to remove</span>' : ''}</h3>
             <div class="flex flex-wrap gap-2">
               ${sorted.map(word => canRemove
                 ? `<button onclick="removeWord('${word}')" class="bg-white/20 hover:bg-red-500/50 text-white px-2 py-1 rounded text-sm transition-colors">${word.toUpperCase()} <span class="text-yellow-300">+${getWordScore(word)}</span> <span class="text-red-300 ml-1">✕</span></button>`
