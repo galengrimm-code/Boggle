@@ -581,6 +581,20 @@
           return;
         }
 
+        // Handle room reset for new game (non-host players)
+        if (room.status === 'waiting' && state.gameState === 'mp-results') {
+          console.log('Room reset for new game...');
+          state.board = generateSeededBoard(room.boardCode);
+          state.practiceCode = room.boardCode;
+          state.foundWords = [];
+          state.score = 0;
+          state.mpSubmitted = false;
+          state.mpResults = null;
+          state.gameState = 'mp-lobby';
+          render();
+          return;
+        }
+
         // Update UI for player changes in lobby
         if (playersChanged && state.gameState === 'mp-lobby') {
           updateLobbyUI(players);
@@ -1451,6 +1465,9 @@
       state.mpResults = result;
       state.gameState = 'mp-results';
       render();
+
+      // Restart listener so non-host players can detect when host starts new game
+      startRoomListener();
     }
 
     function leaveRoom() {
@@ -1484,10 +1501,49 @@
       }
     }
 
-    function mpPlayAgain() {
-      // Host creates new room, others will need to rejoin
-      resetMultiplayerState();
-      hostGame();
+    async function mpPlayAgain() {
+      // Reset room with new board, keep same players
+      const newBoardCode = Math.floor(Math.random() * 100000);
+
+      // Get current players and reset their state
+      const roomRef = db.ref(`boggle/rooms/${state.roomId}`);
+      const snapshot = await roomRef.once('value');
+      const room = snapshot.val();
+
+      if (!room) {
+        showMessage('Room not found');
+        return;
+      }
+
+      // Reset each player's submitted/words state
+      const resetPlayers = {};
+      Object.keys(room.players).forEach(name => {
+        resetPlayers[name] = {
+          joinedAt: room.players[name].joinedAt,
+          submitted: false
+        };
+      });
+
+      // Update room with new board and reset state
+      await roomRef.update({
+        boardCode: newBoardCode,
+        status: 'waiting',
+        startTime: null,
+        results: null,
+        players: resetPlayers
+      });
+
+      // Update local state
+      state.board = generateSeededBoard(newBoardCode);
+      state.practiceCode = newBoardCode;
+      state.foundWords = [];
+      state.score = 0;
+      state.mpSubmitted = false;
+      state.mpResults = null;
+      state.gameState = 'mp-lobby';
+
+      startRoomListener();
+      render();
     }
 
     function mpExit() {
@@ -1843,9 +1899,13 @@
             <div class="flex gap-2">
               ${state.isHost ? `
                 <button onclick="mpPlayAgain()" class="flex-1 px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">
-                  New Game
+                  Play Again
                 </button>
-              ` : ''}
+              ` : `
+                <div class="flex-1 px-6 py-3 bg-white/10 rounded-xl text-white/70 text-center text-sm">
+                  Waiting for host...
+                </div>
+              `}
               <button onclick="mpExit()" class="flex-1 px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors">
                 Exit
               </button>
