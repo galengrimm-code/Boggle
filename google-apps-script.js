@@ -288,7 +288,7 @@ function handleStartRoom(params) {
 
 function handleSubmitWords(params) {
   var roomId = (params.roomId || '').toUpperCase();
-  var player = params.player;
+  var player = (params.player || '').toLowerCase();
   var wordsParam = params.words || '';
 
   if (!roomId || !player) {
@@ -310,14 +310,18 @@ function handleSubmitWords(params) {
 
   sheet.getRange(row, 5).setValue(JSON.stringify(words));
 
-  var players = JSON.parse(data[2]);
-  var allSubmitted = players.every(function(p) { return words[p] !== undefined; });
+  // Check if all players submitted (case-insensitive)
+  var players = JSON.parse(data[2]).map(function(p) { return p.toLowerCase(); });
+  var submittedPlayers = Object.keys(words).map(function(p) { return p.toLowerCase(); });
+  var allSubmitted = players.every(function(p) {
+    return submittedPlayers.indexOf(p) !== -1;
+  });
 
   if (allSubmitted) {
     sheet.getRange(row, 4).setValue('finished');
   }
 
-  return { success: true, allSubmitted: allSubmitted };
+  return { success: true, allSubmitted: allSubmitted, submitted: submittedPlayers.length, total: players.length };
 }
 
 function handleGetResults(params) {
@@ -336,11 +340,17 @@ function handleGetResults(params) {
 
   var data = sheet.getRange(row, 1, 1, 7).getValues()[0];
   var players = JSON.parse(data[2]);
-  var words = JSON.parse(data[4] || '{}');
+  var wordsRaw = JSON.parse(data[4] || '{}');
+
+  // Normalize words object keys to lowercase
+  var words = {};
+  Object.keys(wordsRaw).forEach(function(key) {
+    words[key.toLowerCase()] = wordsRaw[key];
+  });
 
   var wordCounts = {};
   players.forEach(function(player) {
-    var playerWords = words[player] || [];
+    var playerWords = words[player.toLowerCase()] || [];
     playerWords.forEach(function(word) {
       wordCounts[word] = (wordCounts[word] || 0) + 1;
     });
@@ -351,7 +361,7 @@ function handleGetResults(params) {
   });
 
   var results = players.map(function(player) {
-    var playerWords = words[player] || [];
+    var playerWords = words[player.toLowerCase()] || [];
     var uniqueWords = playerWords.filter(function(word) {
       return wordCounts[word] === 1;
     });
