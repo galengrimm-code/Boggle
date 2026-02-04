@@ -1027,8 +1027,11 @@
       
       // Found words
       if (state.foundWords.length > 0) {
-        const sorted = [...state.foundWords].sort((a, b) => getWordScore(b) - getWordScore(a));
         const canRemove = state.practiceMode && state.gameState === 'finished';
+        // Sort alphabetically in practice mode finished state, by score otherwise
+        const sorted = canRemove
+          ? [...state.foundWords].sort((a, b) => a.localeCompare(b))
+          : [...state.foundWords].sort((a, b) => getWordScore(b) - getWordScore(a));
         html += `
           <div class="mt-4 bg-white/10 backdrop-blur rounded-2xl p-4">
             <h3 class="text-white font-bold mb-2">Found Words (${state.foundWords.length})${canRemove ? ' <span class="font-normal text-white/50 text-sm">- tap to remove</span>' : ''}</h3>
