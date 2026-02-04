@@ -95,11 +95,46 @@
       return Math.floor(10000 + Math.random() * 90000);
     }
 
+    // Validate board meets quality criteria
+    function validateBoard(board) {
+      // Count vowels (A, E, I, O, U)
+      const vowels = 'AEIOU';
+      let vowelCount = 0;
+      const letterCounts = {};
+
+      board.forEach(letter => {
+        const l = letter.toUpperCase().charAt(0);
+        if (vowels.includes(l)) vowelCount++;
+        letterCounts[l] = (letterCounts[l] || 0) + 1;
+      });
+
+      // Check minimum 4 vowels
+      if (vowelCount < 4) return false;
+
+      // Check no more than 2 duplicate letters (letters appearing 2+ times)
+      let duplicateCount = 0;
+      for (const count of Object.values(letterCounts)) {
+        if (count >= 2) duplicateCount++;
+      }
+      if (duplicateCount > 2) return false;
+
+      return true;
+    }
+
     // Generate random board (for practice mode)
     function generateRandomBoard() {
-      const code = generatePracticeCode();
+      let code, board;
+      let attempts = 0;
+      const maxAttempts = 100;
+
+      do {
+        code = generatePracticeCode();
+        board = generateSeededBoard(code);
+        attempts++;
+      } while (!validateBoard(board) && attempts < maxAttempts);
+
       state.practiceCode = code;
-      return generateSeededBoard(code);
+      return board;
     }
 
     // Get today's date (local timezone - puzzle resets at local midnight)
