@@ -518,7 +518,7 @@
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }
 
-    // Handle drag move with diagonal preference
+    // Handle drag move - simplified and reliable
     function handleDragMove(e) {
       if (!state.isDragging || state.gameState !== 'playing' || state.inputMode !== 'swipe') return;
       e.preventDefault();
@@ -527,90 +527,54 @@
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
       const lastIndex = state.selectedPath[state.selectedPath.length - 1];
-      const lastPos = getTileCenterPos(lastIndex);
-      if (!lastPos) return;
 
-      // Calculate direction FROM the center of last tile TO current touch
-      const dx = clientX - lastPos.x;
-      const dy = clientY - lastPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // First, check what tile is directly under the touch
+      const touchedIndex = getTileFromPoint(clientX, clientY);
 
-      // Need minimum distance before we try to add a new tile
-      if (dist < 20) return;
+      // Handle backtracking - if touching the previous tile
+      if (state.selectedPath.length >= 2 && touchedIndex === state.selectedPath[state.selectedPath.length - 2]) {
+        state.selectedPath = state.selectedPath.slice(0, -1);
+        state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+        updateTileVisuals();
+        return;
+      }
 
-      // Check for backtracking first
-      if (state.selectedPath.length >= 2) {
-        const prevIndex = state.selectedPath[state.selectedPath.length - 2];
-        const prevPos = getTileCenterPos(prevIndex);
-        if (prevPos) {
-          const toPrevX = prevPos.x - lastPos.x;
-          const toPrevY = prevPos.y - lastPos.y;
-          // If swiping back toward previous tile
-          if ((dx > 0) === (toPrevX > 0) && (dy > 0) === (toPrevY > 0)) {
-            const toPrevDist = Math.sqrt(toPrevX * toPrevX + toPrevY * toPrevY);
-            if (dist > toPrevDist * 0.4) {
-              clearTimeout(state.pendingTimeout);
-              state.pendingTile = null;
-              state.selectedPath = state.selectedPath.slice(0, -1);
-              state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
-              updateTileVisuals();
-              return;
+      // If touched tile is valid (adjacent and not selected), check if we should prefer a diagonal
+      if (touchedIndex !== -1 && touchedIndex !== lastIndex &&
+          !state.selectedPath.includes(touchedIndex) && areAdjacent(lastIndex, touchedIndex)) {
+
+        const lastPos = getTileCenterPos(lastIndex);
+        if (lastPos) {
+          const dx = clientX - lastPos.x;
+          const dy = clientY - lastPos.y;
+
+          // Check if swiping diagonally
+          const swipeAngle = Math.atan2(Math.abs(dy), Math.abs(dx));
+          const isDiagonalSwipe = swipeAngle > 0.4 && swipeAngle < 1.17; // ~23° to ~67°
+
+          // If swiping diagonally but touched an orthogonal tile, look for a diagonal
+          if (isDiagonalSwipe && !isDiagonal(lastIndex, touchedIndex)) {
+            // Find diagonal tile in swipe direction
+            for (let i = 0; i < 16; i++) {
+              if (state.selectedPath.includes(i) || !areAdjacent(lastIndex, i) || !isDiagonal(lastIndex, i)) continue;
+
+              const diagPos = getTileCenterPos(i);
+              if (!diagPos) continue;
+
+              const toDiagX = diagPos.x - lastPos.x;
+              const toDiagY = diagPos.y - lastPos.y;
+
+              // Check if diagonal is in our swipe direction
+              if ((dx > 0) === (toDiagX > 0) && (dy > 0) === (toDiagY > 0)) {
+                addTileToPath(i);
+                return;
+              }
             }
           }
         }
-      }
 
-      // Calculate swipe angle (0 = horizontal, PI/4 = diagonal, PI/2 = vertical)
-      const swipeAngle = Math.atan2(Math.abs(dy), Math.abs(dx));
-      const isDiagonalSwipe = swipeAngle > 0.35 && swipeAngle < 1.22; // ~20° to ~70°
-
-      // Find the best matching adjacent tile based on swipe direction
-      let bestTile = -1;
-      let bestScore = -1;
-
-      for (let i = 0; i < 16; i++) {
-        if (state.selectedPath.includes(i) || !areAdjacent(lastIndex, i)) continue;
-
-        const tilePos = getTileCenterPos(i);
-        if (!tilePos) continue;
-
-        const toTileX = tilePos.x - lastPos.x;
-        const toTileY = tilePos.y - lastPos.y;
-
-        // Check if tile is in the direction we're swiping
-        if ((dx > 5) !== (toTileX > 0) && Math.abs(dx) > 10) continue;
-        if ((dx < -5) !== (toTileX < 0) && Math.abs(dx) > 10) continue;
-        if ((dy > 5) !== (toTileY > 0) && Math.abs(dy) > 10) continue;
-        if ((dy < -5) !== (toTileY < 0) && Math.abs(dy) > 10) continue;
-
-        const isTileDiagonal = isDiagonal(lastIndex, i);
-
-        // Score based on how well the tile matches our swipe direction
-        // Normalize both vectors and compute dot product
-        const swipeLen = Math.sqrt(dx * dx + dy * dy);
-        const tileLen = Math.sqrt(toTileX * toTileX + toTileY * toTileY);
-        const dot = (dx * toTileX + dy * toTileY) / (swipeLen * tileLen);
-
-        let score = dot;
-
-        // Boost diagonal tiles when swiping diagonally
-        if (isDiagonalSwipe && isTileDiagonal) {
-          score += 0.3;
-        }
-        // Boost orthogonal tiles when swiping straight
-        if (!isDiagonalSwipe && !isTileDiagonal) {
-          score += 0.2;
-        }
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestTile = i;
-        }
-      }
-
-      // Add the best matching tile if we found one
-      if (bestTile !== -1 && bestScore > 0.5) {
-        addTileToPath(bestTile);
+        // Add the touched tile
+        addTileToPath(touchedIndex);
       }
     }
 
