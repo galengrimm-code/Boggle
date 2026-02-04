@@ -379,20 +379,41 @@
       }
     }
 
-    // Get tile from point - improved for mobile
+    // Get tile from point - improved for mobile with expanded hit detection
     function getTileFromPoint(x, y) {
+      // First try exact hit
       const el = document.elementFromPoint(x, y);
       if (el && el.dataset && el.dataset.index !== undefined) {
         return parseInt(el.dataset.index);
       }
-      // Fallback to bounds checking
+
+      // Fallback: find nearest tile within expanded touch radius
+      let nearestIndex = -1;
+      let nearestDist = Infinity;
+      const touchRadius = 25; // pixels of tolerance around tile edges
+
       for (let i = 0; i < tileElements.length; i++) {
         const rect = tileElements[i].getBoundingClientRect();
-        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-          return i;
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        // Check if within expanded bounds (tile + tolerance)
+        const expandedLeft = rect.left - touchRadius;
+        const expandedRight = rect.right + touchRadius;
+        const expandedTop = rect.top - touchRadius;
+        const expandedBottom = rect.bottom + touchRadius;
+
+        if (x >= expandedLeft && x <= expandedRight && y >= expandedTop && y <= expandedBottom) {
+          // Calculate distance to tile center
+          const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestIndex = i;
+          }
         }
       }
-      return -1;
+
+      return nearestIndex;
     }
 
     // Update tile visuals without full re-render
@@ -522,7 +543,7 @@
       // If this is an orthogonal tile but we're swiping diagonally, delay adding it
       const isTileDiagonal = isDiagonal(lastIndex, index);
 
-      if (!isTileDiagonal && isDiagonalSwipe && Math.abs(dx) > 5 && Math.abs(dy) > 5) {
+      if (!isTileDiagonal && isDiagonalSwipe && Math.abs(dx) > 15 && Math.abs(dy) > 15) {
         // Check if there's a diagonal neighbor in our swipe direction
         const lastPos = getTileCenterPos(lastIndex);
         if (lastPos) {
@@ -542,7 +563,7 @@
                       addTileToPath(index);
                       state.pendingTile = null;
                     }
-                  }, 80);
+                  }, 50);
                   state.lastTouchX = clientX;
                   state.lastTouchY = clientY;
                   return;
