@@ -312,33 +312,48 @@ function handleSubmitWords(params) {
     return { error: 'Missing roomId or player' };
   }
 
-  var sheet = getRoomsSheet();
-  var row = findRoomRow(sheet, roomId);
-
-  if (row === -1) {
-    return { error: 'Room not found' };
+  // Use a lock to prevent race conditions when multiple players submit simultaneously
+  var lock = LockService.getScriptLock();
+  try {
+    // Wait up to 10 seconds for the lock
+    lock.waitLock(10000);
+  } catch (e) {
+    return { error: 'Server busy, please try again' };
   }
 
-  var data = sheet.getRange(row, 1, 1, 7).getValues()[0];
-  var words = JSON.parse(data[4] || '{}');
+  try {
+    var sheet = getRoomsSheet();
+    var row = findRoomRow(sheet, roomId);
 
-  var playerWords = wordsParam ? wordsParam.split(',').map(function(w) { return w.trim().toLowerCase(); }) : [];
-  words[player] = playerWords;
+    if (row === -1) {
+      return { error: 'Room not found' };
+    }
 
-  sheet.getRange(row, 5).setValue(JSON.stringify(words));
+    // Re-read data after acquiring lock to get latest state
+    var data = sheet.getRange(row, 1, 1, 7).getValues()[0];
+    var words = JSON.parse(data[4] || '{}');
 
-  // Check if all players submitted (case-insensitive)
-  var players = JSON.parse(data[2]).map(function(p) { return p.toLowerCase(); });
-  var submittedPlayers = Object.keys(words).map(function(p) { return p.toLowerCase(); });
-  var allSubmitted = players.every(function(p) {
-    return submittedPlayers.indexOf(p) !== -1;
-  });
+    var playerWords = wordsParam ? wordsParam.split(',').map(function(w) { return w.trim().toLowerCase(); }) : [];
+    words[player] = playerWords;
 
-  if (allSubmitted) {
-    sheet.getRange(row, 4).setValue('finished');
+    sheet.getRange(row, 5).setValue(JSON.stringify(words));
+
+    // Check if all players submitted (case-insensitive)
+    var players = JSON.parse(data[2]).map(function(p) { return p.toLowerCase(); });
+    var submittedPlayers = Object.keys(words).map(function(p) { return p.toLowerCase(); });
+    var allSubmitted = players.every(function(p) {
+      return submittedPlayers.indexOf(p) !== -1;
+    });
+
+    if (allSubmitted) {
+      sheet.getRange(row, 4).setValue('finished');
+    }
+
+    return { success: true, allSubmitted: allSubmitted, submitted: submittedPlayers.length, total: players.length };
+  } finally {
+    // Always release the lock
+    lock.releaseLock();
   }
-
-  return { success: true, allSubmitted: allSubmitted, submitted: submittedPlayers.length, total: players.length };
 }
 
 function handleGetResults(params) {
