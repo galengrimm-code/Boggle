@@ -213,7 +213,16 @@
       pendingTimeout: null,
       possibleWords: null,
       practiceMode: false,
-      practiceCode: null
+      practiceCode: null,
+      // Multiplayer
+      multiplayerMode: false,
+      roomId: null,
+      isHost: false,
+      roomPlayers: [],
+      roomStatus: null,
+      pollInterval: null,
+      mpResults: null,
+      mpStartTime: null
     };
 
     // Initialize board
@@ -252,6 +261,86 @@
       } catch (e) {
         console.error('API error:', e);
         return [];
+      }
+    }
+
+    // ============================================
+    // MULTIPLAYER API FUNCTIONS
+    // ============================================
+
+    async function mpCreateRoom(player, boardCode) {
+      try {
+        const url = `${SCRIPT_URL}?action=createRoom&player=${encodeURIComponent(player)}&boardCode=${boardCode}`;
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { error: 'Network error' };
+      }
+    }
+
+    async function mpJoinRoom(roomId, player) {
+      try {
+        const url = `${SCRIPT_URL}?action=joinRoom&roomId=${encodeURIComponent(roomId)}&player=${encodeURIComponent(player)}`;
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { error: 'Network error' };
+      }
+    }
+
+    async function mpPollRoom(roomId) {
+      try {
+        const url = `${SCRIPT_URL}?action=pollRoom&roomId=${encodeURIComponent(roomId)}`;
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { error: 'Network error' };
+      }
+    }
+
+    async function mpStartRoom(roomId) {
+      try {
+        const url = `${SCRIPT_URL}?action=startRoom&roomId=${encodeURIComponent(roomId)}`;
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { error: 'Network error' };
+      }
+    }
+
+    async function mpSubmitWords(roomId, player, words) {
+      try {
+        const wordsStr = words.join(',');
+        const url = `${SCRIPT_URL}?action=submitWords&roomId=${encodeURIComponent(roomId)}&player=${encodeURIComponent(player)}&words=${encodeURIComponent(wordsStr)}`;
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { error: 'Network error' };
+      }
+    }
+
+    async function mpGetResults(roomId) {
+      try {
+        const url = `${SCRIPT_URL}?action=getResults&roomId=${encodeURIComponent(roomId)}`;
+        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
+        return await response.json();
+      } catch (e) {
+        console.error('API error:', e);
+        return { error: 'Network error' };
+      }
+    }
+
+    async function mpLeaveRoom(roomId, player) {
+      try {
+        const url = `${SCRIPT_URL}?action=leaveRoom&roomId=${encodeURIComponent(roomId)}&player=${encodeURIComponent(player)}`;
+        await fetch(url, { redirect: 'follow', mode: 'cors' });
+      } catch (e) {
+        console.error('API error:', e);
       }
     }
 
@@ -732,6 +821,262 @@
       render();
     }
 
+    // ============================================
+    // MULTIPLAYER FUNCTIONS
+    // ============================================
+
+    function showMultiplayerMenu() {
+      const nameInput = document.getElementById('playerName');
+      const name = nameInput ? nameInput.value.trim().toLowerCase() : '';
+      if (!name) {
+        showMessage('Enter your name first');
+        return;
+      }
+      state.playerName = name;
+      localStorage.setItem('boggle_player', name);
+      state.gameState = 'mp-menu';
+      render();
+    }
+
+    async function hostGame() {
+      const boardCode = generatePracticeCode();
+      state.practiceCode = boardCode;
+      state.board = generateSeededBoard(boardCode);
+
+      showMessage('Creating room...');
+      const result = await mpCreateRoom(state.playerName, boardCode);
+
+      if (result.error) {
+        showMessage(result.error);
+        return;
+      }
+
+      state.multiplayerMode = true;
+      state.roomId = result.roomId;
+      state.isHost = true;
+      state.roomPlayers = [state.playerName];
+      state.roomStatus = 'waiting';
+      state.gameState = 'mp-lobby';
+
+      // Start polling for players
+      startLobbyPolling();
+      render();
+    }
+
+    async function joinGame() {
+      const codeInput = document.getElementById('roomCodeInput');
+      const roomId = codeInput ? codeInput.value.trim().toUpperCase() : '';
+
+      if (!roomId || roomId.length !== 6) {
+        showMessage('Enter a 6-character room code');
+        return;
+      }
+
+      showMessage('Joining room...');
+      const result = await mpJoinRoom(roomId, state.playerName);
+
+      if (result.error) {
+        showMessage(result.error);
+        return;
+      }
+
+      state.multiplayerMode = true;
+      state.roomId = roomId;
+      state.isHost = false;
+      state.roomPlayers = result.players;
+      state.practiceCode = result.boardCode;
+      state.board = generateSeededBoard(result.boardCode);
+      state.roomStatus = 'waiting';
+      state.gameState = 'mp-lobby';
+
+      // Start polling
+      startLobbyPolling();
+      render();
+    }
+
+    function startLobbyPolling() {
+      if (state.pollInterval) clearInterval(state.pollInterval);
+
+      state.pollInterval = setInterval(async () => {
+        const result = await mpPollRoom(state.roomId);
+
+        if (result.error) {
+          console.error('Poll error:', result.error);
+          return;
+        }
+
+        state.roomPlayers = result.players;
+        state.roomStatus = result.status;
+
+        // If game started, transition to playing
+        if (result.status === 'playing' && state.gameState === 'mp-lobby') {
+          state.mpStartTime = result.startTime;
+          stopPolling();
+          startMultiplayerGame(result.startTime);
+          return;
+        }
+
+        // If game finished, get results
+        if (result.status === 'finished' && state.gameState !== 'mp-results') {
+          stopPolling();
+          await fetchResults();
+          return;
+        }
+
+        render();
+      }, 2000);
+    }
+
+    function stopPolling() {
+      if (state.pollInterval) {
+        clearInterval(state.pollInterval);
+        state.pollInterval = null;
+      }
+    }
+
+    async function mpHostStartGame() {
+      showMessage('Starting game...');
+      const result = await mpStartRoom(state.roomId);
+
+      if (result.error) {
+        showMessage(result.error);
+        return;
+      }
+
+      state.mpStartTime = result.startTime;
+      stopPolling();
+      startMultiplayerGame(result.startTime);
+    }
+
+    function startMultiplayerGame(startTime) {
+      state.gameState = 'mp-countdown';
+      render();
+
+      const countdownInterval = setInterval(() => {
+        const remaining = Math.ceil((startTime - Date.now()) / 1000);
+
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+          beginMultiplayerPlay();
+        } else {
+          // Update countdown display
+          const countdownEl = document.getElementById('countdownDisplay');
+          if (countdownEl) countdownEl.textContent = remaining;
+        }
+      }, 100);
+    }
+
+    function beginMultiplayerPlay() {
+      state.gameState = 'playing';
+      state.foundWords = [];
+      state.score = 0;
+      state.timeLeft = 180;
+      state.message = '';
+      state.possibleWords = null;
+
+      const endTime = Date.now() + 180 * 1000;
+
+      state.timerInterval = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+        state.timeLeft = remaining;
+
+        if (remaining <= 0) {
+          endMultiplayerGame();
+        } else {
+          const timerEl = document.getElementById('timerDisplay');
+          if (timerEl) {
+            timerEl.textContent = '⏱ ' + formatTime(remaining);
+            timerEl.className = 'text-2xl font-mono font-bold ' + (remaining <= 30 ? 'text-red-300 timer-urgent' : 'text-white');
+          }
+        }
+      }, 1000);
+
+      render();
+    }
+
+    async function endMultiplayerGame() {
+      clearInterval(state.timerInterval);
+      state.gameState = 'mp-waiting';
+      clearSelection();
+
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+      render();
+
+      // Submit words to server
+      showMessage('Submitting words...');
+      await mpSubmitWords(state.roomId, state.playerName, state.foundWords);
+
+      // Start polling for results
+      startResultsPolling();
+    }
+
+    function startResultsPolling() {
+      state.pollInterval = setInterval(async () => {
+        const result = await mpPollRoom(state.roomId);
+
+        if (result.status === 'finished') {
+          stopPolling();
+          await fetchResults();
+        } else {
+          // Update who has submitted
+          const waitingEl = document.getElementById('waitingStatus');
+          if (waitingEl) {
+            waitingEl.textContent = `${result.playersSubmitted.length}/${result.players.length} players finished`;
+          }
+        }
+      }, 2000);
+    }
+
+    async function fetchResults() {
+      const result = await mpGetResults(state.roomId);
+
+      if (result.error) {
+        showMessage(result.error);
+        return;
+      }
+
+      state.mpResults = result;
+      state.gameState = 'mp-results';
+      render();
+    }
+
+    function leaveRoom() {
+      stopPolling();
+      mpLeaveRoom(state.roomId, state.playerName);
+      resetMultiplayerState();
+      state.gameState = 'login';
+      render();
+    }
+
+    function resetMultiplayerState() {
+      state.multiplayerMode = false;
+      state.roomId = null;
+      state.isHost = false;
+      state.roomPlayers = [];
+      state.roomStatus = null;
+      state.mpResults = null;
+      state.mpStartTime = null;
+      stopPolling();
+    }
+
+    function copyRoomCode() {
+      if (state.roomId) {
+        navigator.clipboard.writeText(state.roomId);
+        showMessage('Room code copied!');
+      }
+    }
+
+    function mpPlayAgain() {
+      // Host creates new room, others will need to rejoin
+      resetMultiplayerState();
+      hostGame();
+    }
+
+    function mpExit() {
+      leaveRoom();
+    }
+
     // Load board from code
     function loadBoardFromCode() {
       const codeInput = document.getElementById('practiceCodeInput');
@@ -849,6 +1194,190 @@
               >
                 Practice Mode
               </button>
+              <button
+                onclick="showMultiplayerMenu()"
+                class="w-full px-6 py-3 mt-3 bg-purple-500 hover:bg-purple-400 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                Multiplayer
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Multiplayer Menu
+      if (state.gameState === 'mp-menu') {
+        app.innerHTML = `
+          <div class="min-h-screen flex items-center justify-center p-4">
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-8 max-w-sm w-full text-center">
+              <h1 class="text-3xl font-bold text-white mb-2">Multiplayer</h1>
+              <p class="text-blue-100 mb-6">Playing as ${state.playerName}</p>
+              <button
+                onclick="hostGame()"
+                class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                Host Game
+              </button>
+              <div class="my-4 text-white/50">— or —</div>
+              <input
+                type="text"
+                id="roomCodeInput"
+                placeholder="Enter room code"
+                maxlength="6"
+                class="w-full px-4 py-3 rounded-xl text-lg text-center outline-none mb-3 uppercase font-mono"
+                onkeypress="if(event.key==='Enter')joinGame()"
+              />
+              <button
+                onclick="joinGame()"
+                class="w-full px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                Join Game
+              </button>
+              <button
+                onclick="state.gameState='login'; render();"
+                class="w-full px-6 py-3 mt-4 bg-white/20 hover:bg-white/30 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Multiplayer Lobby
+      if (state.gameState === 'mp-lobby') {
+        app.innerHTML = `
+          <div class="min-h-screen flex items-center justify-center p-4">
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-8 max-w-sm w-full text-center">
+              <h1 class="text-3xl font-bold text-white mb-2">Game Lobby</h1>
+              <div class="mb-4">
+                <p class="text-white/70 text-sm mb-1">Room Code</p>
+                <div class="flex justify-center items-center gap-2">
+                  <span class="text-4xl font-mono font-bold text-yellow-300 tracking-wider">${state.roomId}</span>
+                  <button onclick="copyRoomCode()" class="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm transition-colors">Copy</button>
+                </div>
+              </div>
+              <div class="bg-white/10 rounded-xl p-4 mb-4">
+                <p class="text-white/70 text-sm mb-2">Players (${state.roomPlayers.length})</p>
+                <div class="space-y-2">
+                  ${state.roomPlayers.map((p, i) => `
+                    <div class="flex items-center justify-center gap-2 text-white">
+                      <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+                      <span>${p}${i === 0 ? ' (host)' : ''}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              ${state.isHost ? `
+                <button
+                  onclick="mpHostStartGame()"
+                  class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors mb-3"
+                  ${state.roomPlayers.length < 2 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}
+                >
+                  Start Game
+                </button>
+                ${state.roomPlayers.length < 2 ? '<p class="text-white/50 text-sm mb-3">Waiting for players to join...</p>' : ''}
+              ` : `
+                <p class="text-white/70 mb-4">Waiting for host to start...</p>
+              `}
+              <button
+                onclick="leaveRoom()"
+                class="w-full px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white text-lg font-bold transition-colors"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Multiplayer Countdown
+      if (state.gameState === 'mp-countdown') {
+        app.innerHTML = `
+          <div class="min-h-screen flex items-center justify-center p-4">
+            <div class="text-center">
+              <p class="text-white text-2xl mb-4">Game starting in...</p>
+              <div id="countdownDisplay" class="text-8xl font-bold text-yellow-300">5</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Multiplayer Waiting for Results
+      if (state.gameState === 'mp-waiting') {
+        app.innerHTML = `
+          <div class="min-h-screen flex items-center justify-center p-4">
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-8 max-w-sm w-full text-center">
+              <h1 class="text-2xl font-bold text-white mb-4">Time's Up!</h1>
+              <p class="text-white mb-2">Your score: <span class="text-yellow-300 font-bold">${state.score} pts</span></p>
+              <p class="text-white mb-4">${state.foundWords.length} words found</p>
+              <div class="animate-pulse">
+                <p id="waitingStatus" class="text-white/70">Waiting for other players...</p>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Multiplayer Results
+      if (state.gameState === 'mp-results') {
+        const results = state.mpResults;
+        const myResult = results.players.find(p => p.name === state.playerName);
+
+        app.innerHTML = `
+          <div class="max-w-md mx-auto p-4">
+            <div class="text-center mb-4">
+              <h1 class="text-3xl font-bold text-white mb-1">Results</h1>
+              <p class="text-blue-100 text-sm">Room ${state.roomId}</p>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4">
+              <h2 class="text-white font-bold mb-3 text-center">Final Scores</h2>
+              <div class="space-y-2">
+                ${results.players.map((p, i) => {
+                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                  const isMe = p.name === state.playerName;
+                  return `
+                    <div class="flex justify-between items-center ${isMe ? 'bg-white/20 rounded-lg px-3 py-2' : 'px-3 py-1'}">
+                      <span class="text-white">${medal} ${p.name}${isMe ? ' (you)' : ''}</span>
+                      <span class="text-yellow-300 font-bold">${p.score} pts</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            ${myResult ? `
+              <div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4">
+                <h3 class="text-white font-bold mb-2">Your Words (${myResult.words.length})</h3>
+                <div class="flex flex-wrap gap-2">
+                  ${myResult.words.sort().map(word => {
+                    const isDuplicate = results.duplicates.includes(word);
+                    return isDuplicate
+                      ? `<span class="bg-red-500/30 text-red-200 px-2 py-1 rounded text-sm line-through">${word.toUpperCase()}</span>`
+                      : `<span class="bg-green-500/30 text-green-200 px-2 py-1 rounded text-sm">${word.toUpperCase()} +${getWordScore(word)}</span>`;
+                  }).join('')}
+                </div>
+                ${results.duplicates.length > 0 ? `
+                  <p class="text-white/50 text-xs mt-2">Crossed out words were found by multiple players</p>
+                ` : ''}
+              </div>
+            ` : ''}
+
+            <div class="flex gap-2">
+              ${state.isHost ? `
+                <button onclick="mpPlayAgain()" class="flex-1 px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">
+                  New Game
+                </button>
+              ` : ''}
+              <button onclick="mpExit()" class="flex-1 px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors">
+                Exit
+              </button>
             </div>
           </div>
         `;
@@ -858,10 +1387,12 @@
       let html = `<div class="max-w-md mx-auto p-4">`;
       
       // Header
+      const title = state.multiplayerMode ? 'Multiplayer' : (state.practiceMode ? 'Practice Mode' : 'Daily Boggle');
+      const subtitle = state.multiplayerMode ? `Room ${state.roomId} • ${state.playerName}` : (state.practiceMode ? state.playerName : `${state.todayDate} • ${state.playerName}`);
       html += `
         <div class="text-center mb-4">
-          <h1 class="text-3xl font-bold text-white mb-1">${state.practiceMode ? 'Practice Mode' : 'Daily Boggle'}</h1>
-          <p class="text-blue-100 text-sm">${state.practiceMode ? state.playerName : `${state.todayDate} • ${state.playerName}`}</p>
+          <h1 class="text-3xl font-bold text-white mb-1">${title}</h1>
+          <p class="text-blue-100 text-sm">${subtitle}</p>
         </div>
       `;
       
@@ -1106,6 +1637,15 @@
     window.generateRandomBoard = generateRandomBoard;
     window.replayBoard = replayBoard;
     window.removeWord = removeWord;
+    // Multiplayer
+    window.showMultiplayerMenu = showMultiplayerMenu;
+    window.hostGame = hostGame;
+    window.joinGame = joinGame;
+    window.mpHostStartGame = mpHostStartGame;
+    window.leaveRoom = leaveRoom;
+    window.copyRoomCode = copyRoomCode;
+    window.mpPlayAgain = mpPlayAgain;
+    window.mpExit = mpExit;
 
     // Initial render
     render();
