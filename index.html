@@ -893,15 +893,28 @@
     }
 
     async function hostGame() {
+      // Update button to show loading state
+      const btn = document.querySelector('button[onclick="hostGame()"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+        btn.style.opacity = '0.7';
+      }
+
       const boardCode = generatePracticeCode();
       state.practiceCode = boardCode;
       state.board = generateSeededBoard(boardCode);
 
-      showMessage('Creating room...');
       const result = await mpCreateRoom(state.playerName, boardCode);
 
       if (result.error) {
         showMessage(result.error);
+        // Reset button
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Host Game';
+          btn.style.opacity = '1';
+        }
         return;
       }
 
@@ -926,10 +939,24 @@
         return;
       }
 
+      // Update button to show loading state
+      const btn = document.querySelector('button[onclick="joinGame()"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Joining...';
+        btn.style.opacity = '0.7';
+      }
+
       const result = await mpJoinRoom(roomId, state.playerName);
 
       if (result.error) {
         showMessage(result.error);
+        // Reset button
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Join Game';
+          btn.style.opacity = '1';
+        }
         return;
       }
 
