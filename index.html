@@ -528,43 +528,27 @@
         return;
       }
 
-      // Skip if already selected or not adjacent
-      if (state.selectedPath.includes(index) || !areAdjacent(lastIndex, index)) {
-        state.lastTouchX = clientX;
-        state.lastTouchY = clientY;
-        return;
-      }
-
-      // Calculate swipe direction
+      // Calculate swipe direction from last position
       const dx = clientX - state.lastTouchX;
       const dy = clientY - state.lastTouchY;
       const swipeAngle = Math.abs(dx) > 0 || Math.abs(dy) > 0 ? Math.atan2(Math.abs(dy), Math.abs(dx)) : 0;
-      const isDiagonalSwipe = swipeAngle > 0.3 && swipeAngle < 1.27; // ~17° to ~73°
+      const isDiagonalSwipe = swipeAngle > 0.4 && swipeAngle < 1.17; // ~23° to ~67° - tighter diagonal detection
 
-      // If this is an orthogonal tile but we're swiping diagonally, delay adding it
-      const isTileDiagonal = isDiagonal(lastIndex, index);
-
-      if (!isTileDiagonal && isDiagonalSwipe && Math.abs(dx) > 15 && Math.abs(dy) > 15) {
-        // Check if there's a diagonal neighbor in our swipe direction
+      // If swiping diagonally, try to find and prefer the diagonal tile
+      if (isDiagonalSwipe && Math.abs(dx) > 8 && Math.abs(dy) > 8) {
         const lastPos = getTileCenterPos(lastIndex);
         if (lastPos) {
+          // Find the diagonal tile in our swipe direction
           for (let i = 0; i < 16; i++) {
             if (!state.selectedPath.includes(i) && areAdjacent(lastIndex, i) && isDiagonal(lastIndex, i)) {
               const diagPos = getTileCenterPos(i);
               if (diagPos) {
-                // Check if diagonal tile is in our swipe direction
                 const toDiagX = diagPos.x - lastPos.x;
                 const toDiagY = diagPos.y - lastPos.y;
+                // Check if this diagonal is in our swipe direction
                 if ((dx > 0) === (toDiagX > 0) && (dy > 0) === (toDiagY > 0)) {
-                  // We're swiping toward a diagonal - wait before adding orthogonal
-                  state.pendingTile = index;
-                  clearTimeout(state.pendingTimeout);
-                  state.pendingTimeout = setTimeout(() => {
-                    if (state.pendingTile === index && state.isDragging) {
-                      addTileToPath(index);
-                      state.pendingTile = null;
-                    }
-                  }, 50);
+                  // Add the diagonal tile directly
+                  addTileToPath(i);
                   state.lastTouchX = clientX;
                   state.lastTouchY = clientY;
                   return;
@@ -573,6 +557,13 @@
             }
           }
         }
+      }
+
+      // Skip if already selected or not adjacent
+      if (state.selectedPath.includes(index) || !areAdjacent(lastIndex, index)) {
+        state.lastTouchX = clientX;
+        state.lastTouchY = clientY;
+        return;
       }
 
       // Clear any pending tile if we're adding a different one
