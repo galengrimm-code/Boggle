@@ -510,72 +510,93 @@
 
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const index = getTileFromPoint(clientX, clientY);
-
-      if (index === -1) return;
 
       const lastIndex = state.selectedPath[state.selectedPath.length - 1];
+      const lastPos = getTileCenterPos(lastIndex);
+      if (!lastPos) return;
 
-      // Backtracking
-      if (state.selectedPath.length >= 2 && index === state.selectedPath[state.selectedPath.length - 2]) {
-        clearTimeout(state.pendingTimeout);
-        state.pendingTile = null;
-        state.selectedPath = state.selectedPath.slice(0, -1);
-        state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
-        updateTileVisuals();
-        state.lastTouchX = clientX;
-        state.lastTouchY = clientY;
-        return;
-      }
+      // Calculate direction FROM the center of last tile TO current touch
+      const dx = clientX - lastPos.x;
+      const dy = clientY - lastPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // Calculate swipe direction from last position
-      const dx = clientX - state.lastTouchX;
-      const dy = clientY - state.lastTouchY;
-      const swipeAngle = Math.abs(dx) > 0 || Math.abs(dy) > 0 ? Math.atan2(Math.abs(dy), Math.abs(dx)) : 0;
-      const isDiagonalSwipe = swipeAngle > 0.4 && swipeAngle < 1.17; // ~23° to ~67° - tighter diagonal detection
+      // Need minimum distance before we try to add a new tile
+      if (dist < 20) return;
 
-      // If swiping diagonally, try to find and prefer the diagonal tile
-      if (isDiagonalSwipe && Math.abs(dx) > 8 && Math.abs(dy) > 8) {
-        const lastPos = getTileCenterPos(lastIndex);
-        if (lastPos) {
-          // Find the diagonal tile in our swipe direction
-          for (let i = 0; i < 16; i++) {
-            if (!state.selectedPath.includes(i) && areAdjacent(lastIndex, i) && isDiagonal(lastIndex, i)) {
-              const diagPos = getTileCenterPos(i);
-              if (diagPos) {
-                const toDiagX = diagPos.x - lastPos.x;
-                const toDiagY = diagPos.y - lastPos.y;
-                // Check if this diagonal is in our swipe direction
-                if ((dx > 0) === (toDiagX > 0) && (dy > 0) === (toDiagY > 0)) {
-                  // Add the diagonal tile directly
-                  addTileToPath(i);
-                  state.lastTouchX = clientX;
-                  state.lastTouchY = clientY;
-                  return;
-                }
-              }
+      // Check for backtracking first
+      if (state.selectedPath.length >= 2) {
+        const prevIndex = state.selectedPath[state.selectedPath.length - 2];
+        const prevPos = getTileCenterPos(prevIndex);
+        if (prevPos) {
+          const toPrevX = prevPos.x - lastPos.x;
+          const toPrevY = prevPos.y - lastPos.y;
+          // If swiping back toward previous tile
+          if ((dx > 0) === (toPrevX > 0) && (dy > 0) === (toPrevY > 0)) {
+            const toPrevDist = Math.sqrt(toPrevX * toPrevX + toPrevY * toPrevY);
+            if (dist > toPrevDist * 0.4) {
+              clearTimeout(state.pendingTimeout);
+              state.pendingTile = null;
+              state.selectedPath = state.selectedPath.slice(0, -1);
+              state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+              updateTileVisuals();
+              return;
             }
           }
         }
       }
 
-      // Skip if already selected or not adjacent
-      if (state.selectedPath.includes(index) || !areAdjacent(lastIndex, index)) {
-        state.lastTouchX = clientX;
-        state.lastTouchY = clientY;
-        return;
+      // Calculate swipe angle (0 = horizontal, PI/4 = diagonal, PI/2 = vertical)
+      const swipeAngle = Math.atan2(Math.abs(dy), Math.abs(dx));
+      const isDiagonalSwipe = swipeAngle > 0.35 && swipeAngle < 1.22; // ~20° to ~70°
+
+      // Find the best matching adjacent tile based on swipe direction
+      let bestTile = -1;
+      let bestScore = -1;
+
+      for (let i = 0; i < 16; i++) {
+        if (state.selectedPath.includes(i) || !areAdjacent(lastIndex, i)) continue;
+
+        const tilePos = getTileCenterPos(i);
+        if (!tilePos) continue;
+
+        const toTileX = tilePos.x - lastPos.x;
+        const toTileY = tilePos.y - lastPos.y;
+
+        // Check if tile is in the direction we're swiping
+        if ((dx > 5) !== (toTileX > 0) && Math.abs(dx) > 10) continue;
+        if ((dx < -5) !== (toTileX < 0) && Math.abs(dx) > 10) continue;
+        if ((dy > 5) !== (toTileY > 0) && Math.abs(dy) > 10) continue;
+        if ((dy < -5) !== (toTileY < 0) && Math.abs(dy) > 10) continue;
+
+        const isTileDiagonal = isDiagonal(lastIndex, i);
+
+        // Score based on how well the tile matches our swipe direction
+        // Normalize both vectors and compute dot product
+        const swipeLen = Math.sqrt(dx * dx + dy * dy);
+        const tileLen = Math.sqrt(toTileX * toTileX + toTileY * toTileY);
+        const dot = (dx * toTileX + dy * toTileY) / (swipeLen * tileLen);
+
+        let score = dot;
+
+        // Boost diagonal tiles when swiping diagonally
+        if (isDiagonalSwipe && isTileDiagonal) {
+          score += 0.3;
+        }
+        // Boost orthogonal tiles when swiping straight
+        if (!isDiagonalSwipe && !isTileDiagonal) {
+          score += 0.2;
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestTile = i;
+        }
       }
 
-      // Clear any pending tile if we're adding a different one
-      if (state.pendingTile !== null && state.pendingTile !== index) {
-        clearTimeout(state.pendingTimeout);
-        state.pendingTile = null;
+      // Add the best matching tile if we found one
+      if (bestTile !== -1 && bestScore > 0.5) {
+        addTileToPath(bestTile);
       }
-
-      // Add tile immediately
-      addTileToPath(index);
-      state.lastTouchX = clientX;
-      state.lastTouchY = clientY;
     }
 
     // Add tile to path helper
