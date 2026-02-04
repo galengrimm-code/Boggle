@@ -723,7 +723,7 @@
       // Fallback: find nearest tile within expanded touch radius
       let nearestIndex = -1;
       let nearestDist = Infinity;
-      const touchRadius = 25; // pixels of tolerance around tile edges
+      const touchRadius = 30; // pixels of tolerance around tile edges
 
       for (let i = 0; i < tileElements.length; i++) {
         const rect = tileElements[i].getBoundingClientRect();
