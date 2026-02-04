@@ -574,7 +574,9 @@
           return;
         }
 
-        if (room.status === 'finished' && state.gameState === 'mp-waiting') {
+        if (room.status === 'finished' && (state.gameState === 'mp-waiting' || state.gameState === 'mp-playing')) {
+          console.log('Room finished, fetching results...');
+          stopRoomListener();
           fetchResults();
           return;
         }
@@ -636,46 +638,57 @@
     // ============================================
 
     async function calculateAndSetResults(roomId) {
-      const roomSnapshot = await db.ref(`boggle/rooms/${roomId}`).once('value');
-      const room = roomSnapshot.val();
+      try {
+        const roomSnapshot = await db.ref(`boggle/rooms/${roomId}`).once('value');
+        const room = roomSnapshot.val();
 
-      // Collect all words by player
-      const playerWords = {};
-      const playerNames = Object.keys(room.players);
-      playerNames.forEach(name => {
-        const data = room.players[name];
-        playerWords[name] = data.words ? data.words.split(',').map(w => w.trim().toLowerCase()).filter(w => w) : [];
-      });
-
-      // Find duplicates (words found by multiple players)
-      const wordCounts = {};
-      Object.values(playerWords).forEach(words => {
-        words.forEach(word => {
-          wordCounts[word] = (wordCounts[word] || 0) + 1;
-        });
-      });
-      const duplicates = Object.keys(wordCounts).filter(w => wordCounts[w] > 1);
-
-      // Calculate scores (excluding duplicates)
-      const results = playerNames.map(name => {
-        const words = playerWords[name];
-        const uniqueWords = words.filter(w => !duplicates.includes(w));
-        const score = uniqueWords.reduce((total, word) => total + getWordScore(word), 0);
-        return { name, words, uniqueWords, score };
-      });
-
-      // Sort by score descending
-      results.sort((a, b) => b.score - a.score);
-
-      // Update room with results
-      await db.ref(`boggle/rooms/${roomId}`).update({
-        status: 'finished',
-        results: {
-          players: results,
-          duplicates: duplicates,
-          status: 'finished'
+        if (!room || !room.players) {
+          console.error('Room or players not found');
+          return;
         }
-      });
+
+        // Collect all words by player
+        const playerWords = {};
+        const playerNames = Object.keys(room.players);
+        playerNames.forEach(name => {
+          const data = room.players[name];
+          playerWords[name] = data.words ? data.words.split(',').map(w => w.trim().toLowerCase()).filter(w => w) : [];
+        });
+
+        // Find duplicates (words found by multiple players)
+        const wordCounts = {};
+        Object.values(playerWords).forEach(words => {
+          words.forEach(word => {
+            wordCounts[word] = (wordCounts[word] || 0) + 1;
+          });
+        });
+        const duplicates = Object.keys(wordCounts).filter(w => wordCounts[w] > 1);
+
+        // Calculate scores (excluding duplicates)
+        const results = playerNames.map(name => {
+          const words = playerWords[name];
+          const uniqueWords = words.filter(w => !duplicates.includes(w));
+          const score = uniqueWords.reduce((total, word) => total + getWordScore(word), 0);
+          return { name, words, uniqueWords, score };
+        });
+
+        // Sort by score descending
+        results.sort((a, b) => b.score - a.score);
+
+        // Update room with results
+        await db.ref(`boggle/rooms/${roomId}`).update({
+          status: 'finished',
+          results: {
+            players: results,
+            duplicates: duplicates,
+            status: 'finished'
+          }
+        });
+
+        console.log('Results calculated and saved');
+      } catch (e) {
+        console.error('Error calculating results:', e);
+      }
     }
 
     // ============================================
@@ -1396,8 +1409,19 @@
 
       render();
 
-      // Real-time listener handles results - just restart it
+      // Real-time listener handles results - restart it
       startRoomListener();
+
+      // Fallback: check for results after 3 seconds if listener doesn't trigger
+      setTimeout(async () => {
+        if (state.gameState === 'mp-waiting') {
+          console.log('Fallback: checking for results...');
+          const room = await db.ref(`boggle/rooms/${state.roomId}`).once('value');
+          if (room.exists() && room.val().status === 'finished') {
+            fetchResults();
+          }
+        }
+      }, 3000);
     }
 
     function forceResults() {
