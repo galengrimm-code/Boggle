@@ -1025,7 +1025,7 @@
 
     function startMultiplayerGame(startTime) {
       // Prevent multiple countdowns
-      if (state.gameState === 'mp-countdown') return;
+      if (state.gameState === 'mp-countdown' || state.gameState === 'playing') return;
 
       // Clear any existing countdown
       if (state.countdownInterval) {
@@ -1033,8 +1033,26 @@
         state.countdownInterval = null;
       }
 
+      // Validate startTime
+      if (!startTime || typeof startTime !== 'number') {
+        console.error('Invalid startTime:', startTime);
+        beginMultiplayerPlay();
+        return;
+      }
+
+      // If startTime already passed, start immediately
+      const initialRemaining = Math.ceil((startTime - Date.now()) / 1000);
+      if (initialRemaining <= 0) {
+        beginMultiplayerPlay();
+        return;
+      }
+
       state.gameState = 'mp-countdown';
       render();
+
+      // Update initial display
+      const countdownEl = document.getElementById('countdownDisplay');
+      if (countdownEl) countdownEl.textContent = initialRemaining;
 
       state.countdownInterval = setInterval(() => {
         const remaining = Math.ceil((startTime - Date.now()) / 1000);
@@ -1045,10 +1063,10 @@
           beginMultiplayerPlay();
         } else {
           // Update countdown display
-          const countdownEl = document.getElementById('countdownDisplay');
-          if (countdownEl) countdownEl.textContent = remaining;
+          const el = document.getElementById('countdownDisplay');
+          if (el) el.textContent = remaining;
         }
-      }, 100);
+      }, 250);
     }
 
     function beginMultiplayerPlay() {
