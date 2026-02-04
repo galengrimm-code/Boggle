@@ -258,7 +258,8 @@
       pollInterval: null,
       mpResults: null,
       mpStartTime: null,
-      mpSubmitted: false
+      mpSubmitted: false,
+      countdownInterval: null
     };
 
     // Initialize board
@@ -1028,14 +1029,24 @@
     }
 
     function startMultiplayerGame(startTime) {
+      // Prevent multiple countdowns
+      if (state.gameState === 'mp-countdown') return;
+
+      // Clear any existing countdown
+      if (state.countdownInterval) {
+        clearInterval(state.countdownInterval);
+        state.countdownInterval = null;
+      }
+
       state.gameState = 'mp-countdown';
       render();
 
-      const countdownInterval = setInterval(() => {
+      state.countdownInterval = setInterval(() => {
         const remaining = Math.ceil((startTime - Date.now()) / 1000);
 
         if (remaining <= 0) {
-          clearInterval(countdownInterval);
+          clearInterval(state.countdownInterval);
+          state.countdownInterval = null;
           beginMultiplayerPlay();
         } else {
           // Update countdown display
@@ -1166,6 +1177,10 @@
       state.mpResults = null;
       state.mpStartTime = null;
       state.mpSubmitted = false;
+      if (state.countdownInterval) {
+        clearInterval(state.countdownInterval);
+        state.countdownInterval = null;
+      }
       stopPolling();
     }
 
