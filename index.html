@@ -788,7 +788,7 @@
     // Login
     async function handleLogin() {
       const nameInput = document.getElementById('playerName');
-      const name = nameInput.value.trim().toLowerCase();
+      const name = nameInput.value.trim();
       if (!name) return;
 
       state.playerName = name;
@@ -871,7 +871,7 @@
     // Start practice mode
     function startPracticeMode() {
       const nameInput = document.getElementById('playerName');
-      const name = nameInput ? nameInput.value.trim().toLowerCase() : 'player';
+      const name = nameInput ? nameInput.value.trim() : 'player';
       state.playerName = name || 'player';
       state.practiceMode = true;
       state.board = generateRandomBoard();
@@ -886,7 +886,7 @@
 
     function showMultiplayerMenu() {
       const nameInput = document.getElementById('playerName');
-      const name = nameInput ? nameInput.value.trim().toLowerCase() : '';
+      const name = nameInput ? nameInput.value.trim() : '';
       if (!name) {
         showMessage('Enter your name first');
         return;
