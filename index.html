@@ -1768,6 +1768,15 @@
         const results = state.mpResults;
         const myResult = results.players.find(p => p.name.toLowerCase() === state.playerName.toLowerCase());
 
+        // Calculate group stats
+        const allFoundWords = new Set();
+        results.players.forEach(p => {
+          (p.words || []).forEach(w => allFoundWords.add(w.toLowerCase()));
+        });
+        const totalFound = allFoundWords.size;
+        const totalPossible = getAllPossibleWords().length;
+        const percentFound = totalPossible > 0 ? Math.round((totalFound / totalPossible) * 100) : 0;
+
         app.innerHTML = `
           <div class="max-w-md mx-auto p-4">
             <div class="text-center mb-4">
@@ -1807,6 +1816,24 @@
                 ` : ''}
               </div>
             ` : ''}
+
+            <div class="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4">
+              <h3 class="text-white font-bold mb-2 text-center">Group Stats</h3>
+              <div class="flex justify-around text-center">
+                <div>
+                  <p class="text-2xl font-bold text-yellow-300">${totalFound}</p>
+                  <p class="text-white/70 text-xs">Words Found</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-bold text-blue-300">${totalPossible}</p>
+                  <p class="text-white/70 text-xs">Possible Words</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-bold text-green-300">${percentFound}%</p>
+                  <p class="text-white/70 text-xs">Coverage</p>
+                </div>
+              </div>
+            </div>
 
             <div class="flex gap-2">
               ${state.isHost ? `
