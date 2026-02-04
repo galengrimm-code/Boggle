@@ -986,7 +986,7 @@
         }
 
         render();
-      }, 2000);
+      }, 1500);
     }
 
     function stopPolling() {
@@ -1092,12 +1092,12 @@
 
     function startResultsPolling() {
       const startedWaiting = Date.now();
-      const TIMEOUT = 30000; // 30 second timeout
+      const TIMEOUT = 15000; // 15 second timeout
 
       state.pollInterval = setInterval(async () => {
         const result = await mpPollRoom(state.roomId);
 
-        // Check for timeout - force results after 30 seconds
+        // Check for timeout - force results after 15 seconds
         if (Date.now() - startedWaiting > TIMEOUT) {
           stopPolling();
           await fetchResults();
@@ -1116,7 +1116,7 @@
             waitingEl.textContent = `${submitted}/${total} players finished`;
           }
         }
-      }, 2000);
+      }, 1000);
     }
 
     function forceResults() {
