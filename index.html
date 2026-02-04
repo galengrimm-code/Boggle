@@ -1437,6 +1437,10 @@
         return;
       }
 
+      // Ensure results have expected structure
+      if (!result.duplicates) result.duplicates = [];
+      if (!result.players) result.players = [];
+
       state.mpResults = result;
       state.gameState = 'mp-results';
       render();
