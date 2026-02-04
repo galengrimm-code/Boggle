@@ -865,14 +865,13 @@
 
     async function joinGame() {
       const codeInput = document.getElementById('roomCodeInput');
-      const roomId = codeInput ? codeInput.value.trim().toUpperCase() : '';
+      const roomId = codeInput ? codeInput.value.trim() : '';
 
       if (!roomId || roomId.length !== 5 || !/^\d{5}$/.test(roomId)) {
         showMessage('Enter a 5-digit room code');
         return;
       }
 
-      showMessage('Joining room...');
       const result = await mpJoinRoom(roomId, state.playerName);
 
       if (result.error) {

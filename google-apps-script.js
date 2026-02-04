@@ -156,7 +156,8 @@ function getRoomsSheet() {
 function findRoomRow(sheet, roomId) {
   var data = sheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === roomId) {
+    // Compare as strings to handle number/string mismatch
+    if (String(data[i][0]) === String(roomId)) {
       return i + 1;
     }
   }
@@ -201,7 +202,7 @@ function handleCreateRoom(params) {
 }
 
 function handleJoinRoom(params) {
-  var roomId = (params.roomId || '').toUpperCase();
+  var roomId = String(params.roomId || '');
   var player = params.player;
 
   if (!roomId || !player) {
@@ -237,7 +238,7 @@ function handleJoinRoom(params) {
 }
 
 function handlePollRoom(params) {
-  var roomId = (params.roomId || '').toUpperCase();
+  var roomId = String(params.roomId || '');
 
   if (!roomId) {
     return { error: 'Missing roomId' };
@@ -265,7 +266,7 @@ function handlePollRoom(params) {
 }
 
 function handleStartRoom(params) {
-  var roomId = (params.roomId || '').toUpperCase();
+  var roomId = String(params.roomId || '');
 
   if (!roomId) {
     return { error: 'Missing roomId' };
@@ -287,7 +288,7 @@ function handleStartRoom(params) {
 }
 
 function handleSubmitWords(params) {
-  var roomId = (params.roomId || '').toUpperCase();
+  var roomId = String(params.roomId || '');
   var player = (params.player || '').toLowerCase();
   var wordsParam = params.words || '';
 
@@ -325,7 +326,7 @@ function handleSubmitWords(params) {
 }
 
 function handleGetResults(params) {
-  var roomId = (params.roomId || '').toUpperCase();
+  var roomId = String(params.roomId || '');
 
   if (!roomId) {
     return { error: 'Missing roomId' };
@@ -389,7 +390,7 @@ function handleGetResults(params) {
 }
 
 function handleLeaveRoom(params) {
-  var roomId = (params.roomId || '').toUpperCase();
+  var roomId = String(params.roomId || '');
   var player = params.player;
 
   if (!roomId || !player) {
