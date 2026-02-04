@@ -1198,6 +1198,17 @@
       startGame();
     }
 
+    // Back to main menu
+    function backToMenu() {
+      state.gameState = 'login';
+      state.practiceMode = false;
+      state.foundWords = [];
+      state.score = 0;
+      state.possibleWords = null;
+      state.board = generateDailyBoard(state.todayDate);
+      render();
+    }
+
     // Remove word and recalculate score (practice mode)
     function removeWord(word) {
       const index = state.foundWords.indexOf(word);
@@ -1624,11 +1635,14 @@
                   : '📊 Calculating possible words...'}
               </p>
             </div>
-            <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors mb-4">Share Results</button>
-            ${state.practiceMode ? `
-              <button onclick="newGame()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors mb-4 ml-2">New Game</button>
-              <button onclick="replayBoard()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors mb-4 ml-2">Replay</button>
-            ` : ''}
+            <div class="flex flex-wrap justify-center gap-2 mb-4">
+              <button onclick="shareResults()" class="px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white font-bold transition-colors">Share</button>
+              ${state.practiceMode ? `
+                <button onclick="newGame()" class="px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white font-bold transition-colors">New Game</button>
+                <button onclick="replayBoard()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors">Replay</button>
+              ` : ''}
+              <button onclick="backToMenu()" class="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white font-bold transition-colors">Menu</button>
+            </div>
         `;
         
         // Leaderboard
@@ -1720,6 +1734,7 @@
     window.startGame = startGame;
     window.startPracticeMode = startPracticeMode;
     window.newGame = newGame;
+    window.backToMenu = backToMenu;
     window.submitWord = submitWord;
     window.clearSelection = clearSelection;
     window.setInputMode = setInputMode;
