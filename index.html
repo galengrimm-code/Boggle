@@ -940,16 +940,21 @@
     }
 
     async function mpHostStartGame() {
-      showMessage('Starting game...');
+      // Stop polling immediately to prevent re-renders
+      stopPolling();
+      state.roomStatus = 'starting';
+      render();
+
       const result = await mpStartRoom(state.roomId);
 
       if (result.error) {
         showMessage(result.error);
+        state.roomStatus = 'waiting';
+        startLobbyPolling();
         return;
       }
 
       state.mpStartTime = result.startTime;
-      stopPolling();
       startMultiplayerGame(result.startTime);
     }
 
@@ -1294,7 +1299,11 @@
                   `).join('')}
                 </div>
               </div>
-              ${state.isHost ? `
+              ${state.roomStatus === 'starting' ? `
+                <div class="w-full px-6 py-3 bg-yellow-500 rounded-xl text-white text-lg font-bold mb-3 animate-pulse">
+                  Starting...
+                </div>
+              ` : state.isHost ? `
                 <button
                   onclick="mpHostStartGame()"
                   class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors mb-3"
