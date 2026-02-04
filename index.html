@@ -980,6 +980,7 @@
 
         // Only re-render if players changed, otherwise just update the list
         if (playersChanged) {
+          state.roomPlayers = result.players;
           const playersList = document.getElementById('playersList');
           const playerCount = document.getElementById('playerCount');
           if (playersList && playerCount) {
@@ -990,6 +991,24 @@
                 <span>${p}${i === 0 ? ' (host)' : ''}</span>
               </div>`
             ).join('');
+
+            // Update Start button state for host
+            if (state.isHost) {
+              const startBtn = document.querySelector('button[onclick="mpHostStartGame()"]');
+              const waitingMsg = document.querySelector('.text-white\\/50.text-sm.mb-3');
+              if (startBtn) {
+                if (result.players.length >= 2) {
+                  startBtn.disabled = false;
+                  startBtn.style.opacity = '1';
+                  startBtn.style.cursor = 'pointer';
+                  if (waitingMsg) waitingMsg.remove();
+                } else {
+                  startBtn.disabled = true;
+                  startBtn.style.opacity = '0.5';
+                  startBtn.style.cursor = 'not-allowed';
+                }
+              }
+            }
           } else {
             render();
           }
