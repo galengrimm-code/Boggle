@@ -139,12 +139,8 @@ function getLeaderboard(date) {
 // ============================================
 
 function generateRoomId() {
-  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  var result = '';
-  for (var i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  // Generate 5-digit numeric code (10000-99999)
+  return String(Math.floor(10000 + Math.random() * 90000));
 }
 
 function getRoomsSheet() {
