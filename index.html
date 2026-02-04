@@ -286,6 +286,7 @@
       roomId: null,
       isHost: false,
       roomPlayers: [],
+      roomHost: null,
       roomStatus: null,
       mpResults: null,
       mpStartTime: null,
@@ -566,6 +567,7 @@
 
         state.roomPlayers = players;
         state.roomStatus = room.status;
+        state.roomHost = room.host;
 
         // Handle state transitions
         if (room.status === 'playing' && state.gameState === 'mp-lobby') {
@@ -622,10 +624,10 @@
 
       if (playersList && playerCount) {
         playerCount.textContent = players.length;
-        playersList.innerHTML = players.map((p, i) =>
+        playersList.innerHTML = players.map(p =>
           `<div class="flex items-center justify-center gap-2 text-white">
             <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-            <span>${p}${i === 0 ? ' (host)' : ''}</span>
+            <span>${p}${p === state.roomHost ? ' (host)' : ''}</span>
           </div>`
         ).join('');
 
@@ -1260,6 +1262,7 @@
       state.roomId = result.roomId;
       state.isHost = true;
       state.roomPlayers = [state.playerName];
+      state.roomHost = state.playerName;
       state.roomStatus = 'waiting';
       state.gameState = 'mp-lobby';
 
@@ -1483,6 +1486,7 @@
       state.roomId = null;
       state.isHost = false;
       state.roomPlayers = [];
+      state.roomHost = null;
       state.roomStatus = null;
       state.mpResults = null;
       state.mpStartTime = null;
@@ -1748,10 +1752,10 @@
               <div class="bg-white/10 rounded-xl p-4 mb-4">
                 <p class="text-white/70 text-sm mb-2">Players (<span id="playerCount">${state.roomPlayers.length}</span>)</p>
                 <div id="playersList" class="space-y-2">
-                  ${state.roomPlayers.map((p, i) => `
+                  ${state.roomPlayers.map(p => `
                     <div class="flex items-center justify-center gap-2 text-white">
                       <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                      <span>${p}${i === 0 ? ' (host)' : ''}</span>
+                      <span>${p}${p === state.roomHost ? ' (host)' : ''}</span>
                     </div>
                   `).join('')}
                 </div>
