@@ -15,6 +15,9 @@
   <title>Daily Boggle</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { corePlugins: { preflight: true } }</script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; font-family: 'Nunito', sans-serif; box-sizing: border-box; }
     html {
@@ -59,9 +62,19 @@
   <script src="words.js"></script>
   <script>
     // ============================================
-    // CONFIGURATION - UPDATE THIS URL
+    // FIREBASE CONFIGURATION
     // ============================================
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGQanlr2kHXtHL1MK59lymysbfvyerxuEd-XWA3XnQC4vkEKxnqR8mW0ti_m1g8K88hg/exec';
+    const firebaseConfig = {
+      apiKey: "AIzaSyD2EquXAFa4_6VsTs2MbarcAtVwbKWaS4Q",
+      authDomain: "daily-trivia-75954.firebaseapp.com",
+      databaseURL: "https://daily-trivia-75954-default-rtdb.firebaseio.com",
+      projectId: "daily-trivia-75954",
+      storageBucket: "daily-trivia-75954.firebasestorage.app",
+      messagingSenderId: "146196428161",
+      appId: "1:146196428161:web:2e479bea4d6e5383c6e480"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
     // ============================================
 
     // Boggle dice
@@ -274,7 +287,6 @@
       isHost: false,
       roomPlayers: [],
       roomStatus: null,
-      pollInterval: null,
       mpResults: null,
       mpStartTime: null,
       mpSubmitted: false,
@@ -287,116 +299,403 @@
     // Tile refs
     let tileElements = [];
 
-    // API calls
+    // API calls - Firebase
     async function checkPlayer(name) {
       try {
-        const url = `${SCRIPT_URL}?action=check&player=${encodeURIComponent(name)}&date=${state.todayDate}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
+        const snapshot = await db.ref(`boggle/daily/${state.todayDate}/players/${name}`).once('value');
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          return { played: true, score: data.score, words: data.wordCount };
+        }
+        return { played: false };
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return { played: false };
       }
     }
 
-    async function saveScore(name, score, words) {
+    async function saveScore(name, score, wordCount) {
       try {
-        const url = `${SCRIPT_URL}?action=save&player=${encodeURIComponent(name)}&date=${state.todayDate}&score=${score}&words=${words}`;
-        await fetch(url, { redirect: 'follow', mode: 'cors' });
+        const playerRef = db.ref(`boggle/daily/${state.todayDate}/players/${name}`);
+
+        // Check if already exists (prevent overwrites)
+        const existing = await playerRef.once('value');
+        if (existing.exists()) {
+          console.log('Score already saved');
+          return;
+        }
+
+        await playerRef.set({
+          score: score,
+          wordCount: wordCount,
+          playedAt: firebase.database.ServerValue.TIMESTAMP
+        });
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
       }
     }
 
     async function getLeaderboard() {
       try {
-        const url = `${SCRIPT_URL}?action=leaderboard&date=${state.todayDate}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        const data = await response.json();
-        return data.leaderboard || [];
+        const snapshot = await db.ref(`boggle/daily/${state.todayDate}/players`).once('value');
+        if (!snapshot.exists()) return [];
+
+        const players = [];
+        snapshot.forEach(child => {
+          players.push({
+            player: child.key,
+            score: child.val().score,
+            words: child.val().wordCount
+          });
+        });
+
+        // Sort by score descending
+        players.sort((a, b) => b.score - a.score);
+        return players;
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return [];
       }
     }
 
     // ============================================
-    // MULTIPLAYER API FUNCTIONS
+    // MULTIPLAYER API FUNCTIONS - Firebase
     // ============================================
+
+    let roomListener = null;
 
     async function mpCreateRoom(player, boardCode) {
       try {
-        const url = `${SCRIPT_URL}?action=createRoom&player=${encodeURIComponent(player)}&boardCode=${boardCode}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
+        // Clean up old rooms first
+        await cleanupOldRooms();
+
+        // Generate unique 5-digit room ID
+        let roomId;
+        let attempts = 0;
+        do {
+          roomId = String(Math.floor(10000 + Math.random() * 90000));
+          const exists = await db.ref(`boggle/rooms/${roomId}`).once('value');
+          if (!exists.exists()) break;
+          attempts++;
+        } while (attempts < 10);
+
+        if (attempts >= 10) {
+          return { error: 'Could not generate room ID' };
+        }
+
+        const roomData = {
+          boardCode: boardCode,
+          host: player,
+          status: 'waiting',
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          players: {
+            [player]: {
+              joinedAt: firebase.database.ServerValue.TIMESTAMP,
+              submitted: false
+            }
+          }
+        };
+
+        await db.ref(`boggle/rooms/${roomId}`).set(roomData);
+
+        return { roomId: roomId, boardCode: boardCode };
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return { error: 'Network error' };
       }
     }
 
     async function mpJoinRoom(roomId, player) {
       try {
-        const url = `${SCRIPT_URL}?action=joinRoom&roomId=${encodeURIComponent(roomId)}&player=${encodeURIComponent(player)}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
-      } catch (e) {
-        console.error('API error:', e);
-        return { error: 'Network error' };
-      }
-    }
+        const roomRef = db.ref(`boggle/rooms/${roomId}`);
+        const snapshot = await roomRef.once('value');
 
-    async function mpPollRoom(roomId) {
-      try {
-        const url = `${SCRIPT_URL}?action=pollRoom&roomId=${encodeURIComponent(roomId)}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
+        if (!snapshot.exists()) {
+          return { error: 'Room not found' };
+        }
+
+        const room = snapshot.val();
+
+        if (room.status !== 'waiting') {
+          return { error: 'Game already started' };
+        }
+
+        const playerCount = Object.keys(room.players || {}).length;
+        if (playerCount >= 8) {
+          return { error: 'Room is full' };
+        }
+
+        // Add player to room
+        await roomRef.child(`players/${player}`).set({
+          joinedAt: firebase.database.ServerValue.TIMESTAMP,
+          submitted: false
+        });
+
+        // Get updated player list
+        const updatedSnapshot = await roomRef.child('players').once('value');
+        const players = Object.keys(updatedSnapshot.val() || {});
+
+        return {
+          boardCode: room.boardCode,
+          players: players
+        };
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return { error: 'Network error' };
       }
     }
 
     async function mpStartRoom(roomId) {
       try {
-        const url = `${SCRIPT_URL}?action=startRoom&roomId=${encodeURIComponent(roomId)}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
+        const roomRef = db.ref(`boggle/rooms/${roomId}`);
+
+        // Get server time offset for accurate timing
+        const serverTimeRef = db.ref('.info/serverTimeOffset');
+        const offsetSnapshot = await serverTimeRef.once('value');
+        const offset = offsetSnapshot.val() || 0;
+        const serverTime = Date.now() + offset;
+        const startTime = serverTime + 5000; // 5 seconds from now
+
+        await roomRef.update({
+          status: 'playing',
+          startTime: startTime
+        });
+
+        return { success: true, startTime: startTime };
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return { error: 'Network error' };
       }
     }
 
     async function mpSubmitWords(roomId, player, words) {
       try {
-        const wordsStr = words.join(',');
-        const url = `${SCRIPT_URL}?action=submitWords&roomId=${encodeURIComponent(roomId)}&player=${encodeURIComponent(player)}&words=${encodeURIComponent(wordsStr)}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
+        const playerRef = db.ref(`boggle/rooms/${roomId}/players/${player}`);
+
+        await playerRef.update({
+          words: words.join(','),
+          submitted: true
+        });
+
+        // Check if all players have submitted
+        const roomSnapshot = await db.ref(`boggle/rooms/${roomId}`).once('value');
+        const room = roomSnapshot.val();
+        const players = Object.values(room.players || {});
+        const allSubmitted = players.every(p => p.submitted);
+
+        if (allSubmitted) {
+          await calculateAndSetResults(roomId);
+        }
+
+        return { success: true };
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return { error: 'Network error' };
       }
     }
 
     async function mpGetResults(roomId) {
       try {
-        const url = `${SCRIPT_URL}?action=getResults&roomId=${encodeURIComponent(roomId)}`;
-        const response = await fetch(url, { redirect: 'follow', mode: 'cors' });
-        return await response.json();
+        const snapshot = await db.ref(`boggle/rooms/${roomId}`).once('value');
+
+        if (!snapshot.exists()) {
+          return { error: 'Room not found' };
+        }
+
+        const room = snapshot.val();
+
+        if (room.results) {
+          return room.results;
+        }
+
+        // Results not ready yet - calculate them
+        await calculateAndSetResults(roomId);
+        const updatedSnapshot = await db.ref(`boggle/rooms/${roomId}/results`).once('value');
+        return updatedSnapshot.val() || { error: 'Results not available' };
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
         return { error: 'Network error' };
       }
     }
 
     async function mpLeaveRoom(roomId, player) {
       try {
-        const url = `${SCRIPT_URL}?action=leaveRoom&roomId=${encodeURIComponent(roomId)}&player=${encodeURIComponent(player)}`;
-        await fetch(url, { redirect: 'follow', mode: 'cors' });
+        stopRoomListener();
+
+        const roomRef = db.ref(`boggle/rooms/${roomId}`);
+        const snapshot = await roomRef.once('value');
+
+        if (!snapshot.exists()) return;
+
+        const room = snapshot.val();
+
+        // If host is leaving, delete the room
+        if (room.host === player) {
+          await roomRef.remove();
+        } else {
+          // Just remove the player
+          await roomRef.child(`players/${player}`).remove();
+        }
       } catch (e) {
-        console.error('API error:', e);
+        console.error('Firebase error:', e);
+      }
+    }
+
+    // ============================================
+    // FIREBASE REAL-TIME LISTENER
+    // ============================================
+
+    function startRoomListener() {
+      if (roomListener) stopRoomListener();
+
+      const roomRef = db.ref(`boggle/rooms/${state.roomId}`);
+
+      roomListener = roomRef.on('value', (snapshot) => {
+        if (!snapshot.exists()) {
+          // Room was deleted
+          showMessage('Room closed');
+          resetMultiplayerState();
+          state.gameState = 'login';
+          render();
+          return;
+        }
+
+        const room = snapshot.val();
+        const players = Object.keys(room.players || {});
+        const playersChanged = JSON.stringify(state.roomPlayers) !== JSON.stringify(players);
+
+        state.roomPlayers = players;
+        state.roomStatus = room.status;
+
+        // Handle state transitions
+        if (room.status === 'playing' && state.gameState === 'mp-lobby') {
+          state.mpStartTime = room.startTime;
+          startMultiplayerGame(room.startTime);
+          return;
+        }
+
+        if (room.status === 'finished' && state.gameState === 'mp-waiting') {
+          fetchResults();
+          return;
+        }
+
+        // Update UI for player changes in lobby
+        if (playersChanged && state.gameState === 'mp-lobby') {
+          updateLobbyUI(players);
+        }
+
+        // Update waiting status
+        if (state.gameState === 'mp-waiting' && room.players) {
+          const submitted = Object.values(room.players).filter(p => p.submitted).length;
+          const total = players.length;
+          updateWaitingStatus(submitted, total);
+        }
+      });
+    }
+
+    function stopRoomListener() {
+      if (roomListener && state.roomId) {
+        db.ref(`boggle/rooms/${state.roomId}`).off('value', roomListener);
+        roomListener = null;
+      }
+    }
+
+    function updateLobbyUI(players) {
+      const playersList = document.getElementById('playersList');
+      const playerCount = document.getElementById('playerCount');
+
+      if (playersList && playerCount) {
+        playerCount.textContent = players.length;
+        playersList.innerHTML = players.map((p, i) =>
+          `<div class="flex items-center justify-center gap-2 text-white">
+            <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+            <span>${p}${i === 0 ? ' (host)' : ''}</span>
+          </div>`
+        ).join('');
+
+        // Update Start button state for host
+        if (state.isHost) {
+          const startBtn = document.querySelector('button[onclick="mpHostStartGame()"]');
+          if (startBtn) {
+            startBtn.disabled = players.length < 2;
+            startBtn.style.opacity = players.length < 2 ? '0.5' : '1';
+          }
+        }
+      }
+    }
+
+    function updateWaitingStatus(submitted, total) {
+      const waitingEl = document.getElementById('waitingStatus');
+      if (waitingEl) {
+        waitingEl.textContent = `${submitted}/${total} players finished`;
+      }
+    }
+
+    // ============================================
+    // RESULTS CALCULATION
+    // ============================================
+
+    async function calculateAndSetResults(roomId) {
+      const roomSnapshot = await db.ref(`boggle/rooms/${roomId}`).once('value');
+      const room = roomSnapshot.val();
+
+      // Collect all words by player
+      const playerWords = {};
+      const playerNames = Object.keys(room.players);
+      playerNames.forEach(name => {
+        const data = room.players[name];
+        playerWords[name] = data.words ? data.words.split(',').map(w => w.trim().toLowerCase()).filter(w => w) : [];
+      });
+
+      // Find duplicates (words found by multiple players)
+      const wordCounts = {};
+      Object.values(playerWords).forEach(words => {
+        words.forEach(word => {
+          wordCounts[word] = (wordCounts[word] || 0) + 1;
+        });
+      });
+      const duplicates = Object.keys(wordCounts).filter(w => wordCounts[w] > 1);
+
+      // Calculate scores (excluding duplicates)
+      const results = playerNames.map(name => {
+        const words = playerWords[name];
+        const uniqueWords = words.filter(w => !duplicates.includes(w));
+        const score = uniqueWords.reduce((total, word) => total + getWordScore(word), 0);
+        return { name, words, uniqueWords, score };
+      });
+
+      // Sort by score descending
+      results.sort((a, b) => b.score - a.score);
+
+      // Update room with results
+      await db.ref(`boggle/rooms/${roomId}`).update({
+        status: 'finished',
+        results: {
+          players: results,
+          duplicates: duplicates,
+          status: 'finished'
+        }
+      });
+    }
+
+    // ============================================
+    // ROOM CLEANUP
+    // ============================================
+
+    async function cleanupOldRooms() {
+      try {
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
+        const roomsRef = db.ref('boggle/rooms');
+        const snapshot = await roomsRef.orderByChild('createdAt').endAt(oneHourAgo).limitToFirst(10).once('value');
+
+        const deletePromises = [];
+        snapshot.forEach(child => {
+          deletePromises.push(db.ref(`boggle/rooms/${child.key}`).remove());
+        });
+
+        await Promise.all(deletePromises);
+      } catch (e) {
+        console.error('Cleanup error:', e);
       }
     }
 
@@ -930,8 +1229,8 @@
       state.roomStatus = 'waiting';
       state.gameState = 'mp-lobby';
 
-      // Start polling for players
-      startLobbyPolling();
+      // Start real-time listener for room updates
+      startRoomListener();
       render();
     }
 
@@ -974,90 +1273,14 @@
       state.roomStatus = 'waiting';
       state.gameState = 'mp-lobby';
 
-      // Start polling
-      startLobbyPolling();
+      // Start real-time listener for room updates
+      startRoomListener();
       render();
     }
 
-    function startLobbyPolling() {
-      if (state.pollInterval) clearInterval(state.pollInterval);
-
-      state.pollInterval = setInterval(async () => {
-        const result = await mpPollRoom(state.roomId);
-
-        if (result.error) {
-          console.error('Poll error:', result.error);
-          return;
-        }
-
-        // Check if players changed before updating
-        const playersChanged = JSON.stringify(state.roomPlayers) !== JSON.stringify(result.players);
-        state.roomPlayers = result.players;
-        state.roomStatus = result.status;
-
-        // If game started, transition to playing
-        if (result.status === 'playing' && state.gameState === 'mp-lobby') {
-          state.mpStartTime = result.startTime;
-          stopPolling();
-          startMultiplayerGame(result.startTime);
-          return;
-        }
-
-        // If game finished, get results
-        if (result.status === 'finished' && state.gameState !== 'mp-results') {
-          stopPolling();
-          await fetchResults();
-          return;
-        }
-
-        // Only re-render if players changed, otherwise just update the list
-        if (playersChanged) {
-          state.roomPlayers = result.players;
-          const playersList = document.getElementById('playersList');
-          const playerCount = document.getElementById('playerCount');
-          if (playersList && playerCount) {
-            playerCount.textContent = result.players.length;
-            playersList.innerHTML = result.players.map((p, i) =>
-              `<div class="flex items-center justify-center gap-2 text-white">
-                <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                <span>${p}${i === 0 ? ' (host)' : ''}</span>
-              </div>`
-            ).join('');
-
-            // Update Start button state for host
-            if (state.isHost) {
-              const startBtn = document.querySelector('button[onclick="mpHostStartGame()"]');
-              const waitingMsg = document.querySelector('.text-white\\/50.text-sm.mb-3');
-              if (startBtn) {
-                if (result.players.length >= 2) {
-                  startBtn.disabled = false;
-                  startBtn.style.opacity = '1';
-                  startBtn.style.cursor = 'pointer';
-                  if (waitingMsg) waitingMsg.remove();
-                } else {
-                  startBtn.disabled = true;
-                  startBtn.style.opacity = '0.5';
-                  startBtn.style.cursor = 'not-allowed';
-                }
-              }
-            }
-          } else {
-            render();
-          }
-        }
-      }, 1500);
-    }
-
-    function stopPolling() {
-      if (state.pollInterval) {
-        clearInterval(state.pollInterval);
-        state.pollInterval = null;
-      }
-    }
-
     async function mpHostStartGame() {
-      // Stop polling immediately to prevent re-renders
-      stopPolling();
+      // Stop listener immediately to prevent re-renders
+      stopRoomListener();
       state.roomStatus = 'starting';
       render();
 
@@ -1066,7 +1289,7 @@
       if (result.error) {
         showMessage(result.error);
         state.roomStatus = 'waiting';
-        startLobbyPolling();
+        startRoomListener();
         return;
       }
 
@@ -1173,41 +1396,12 @@
 
       render();
 
-      // Start polling for results
-      startResultsPolling();
-    }
-
-    function startResultsPolling() {
-      const startedWaiting = Date.now();
-      const TIMEOUT = 15000; // 15 second timeout
-
-      state.pollInterval = setInterval(async () => {
-        const result = await mpPollRoom(state.roomId);
-
-        // Check for timeout - force results after 15 seconds
-        if (Date.now() - startedWaiting > TIMEOUT) {
-          stopPolling();
-          await fetchResults();
-          return;
-        }
-
-        if (result.status === 'finished') {
-          stopPolling();
-          await fetchResults();
-        } else {
-          // Update who has submitted
-          const waitingEl = document.getElementById('waitingStatus');
-          if (waitingEl) {
-            const submitted = result.playersSubmitted ? result.playersSubmitted.length : 0;
-            const total = result.players ? result.players.length : 0;
-            waitingEl.textContent = `${submitted}/${total} players finished`;
-          }
-        }
-      }, 1000);
+      // Real-time listener handles results - just restart it
+      startRoomListener();
     }
 
     function forceResults() {
-      stopPolling();
+      stopRoomListener();
       fetchResults();
     }
 
@@ -1225,7 +1419,7 @@
     }
 
     function leaveRoom() {
-      stopPolling();
+      stopRoomListener();
       mpLeaveRoom(state.roomId, state.playerName);
       resetMultiplayerState();
       state.gameState = 'login';
@@ -1245,7 +1439,7 @@
         clearInterval(state.countdownInterval);
         state.countdownInterval = null;
       }
-      stopPolling();
+      stopRoomListener();
     }
 
     function copyRoomCode() {
