@@ -1249,8 +1249,14 @@
         if (check.played) {
           state.score = check.score;
           state.foundWords = [];
+          state.savedWordCount = check.words; // Store the word count for display
           state.gameState = 'finished';
           showMessage("You've already played today!");
+          // Calculate possible words in background
+          setTimeout(() => {
+            state.possibleWords = getAllPossibleWords();
+            render();
+          }, 100);
         } else {
           state.gameState = 'ready';
         }
@@ -2146,7 +2152,8 @@
       // Finished state
       if (state.gameState === 'finished') {
         const possibleCount = state.possibleWords ? state.possibleWords.length : null;
-        const percentFound = possibleCount ? Math.round((state.foundWords.length / possibleCount) * 100) : null;
+        const wordsFoundCount = state.foundWords.length || state.savedWordCount || 0;
+        const percentFound = possibleCount ? Math.round((wordsFoundCount / possibleCount) * 100) : null;
 
         // Score message
         let scoreMessage = '';
@@ -2161,7 +2168,7 @@
               <h2 class="text-xl font-bold text-white mb-2">${state.foundWords.length > 0 ? "Time's Up!" : "Today's Results"}</h2>
               <div class="text-4xl font-bold text-yellow-300 mb-2">${state.score} pts</div>
               <p class="text-white text-lg mb-1">${scoreMessage}</p>
-              <p class="text-green-100">${state.foundWords.length} words found</p>
+              <p class="text-green-100">${wordsFoundCount} words found</p>
               <p class="text-green-200 text-sm mt-2">
                 ${possibleCount !== null
                   ? `📊 ${possibleCount} possible words (you found ${percentFound}%)`
