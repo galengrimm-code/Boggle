@@ -364,6 +364,108 @@
     // ============================================
 
     let roomListener = null;
+    let lobbyListener = null;
+
+    // ============================================
+    // LOBBY BROWSER - Real-time list of open games
+    // ============================================
+
+    function startLobbyListener() {
+      if (lobbyListener) stopLobbyListener();
+
+      const roomsRef = db.ref('boggle/rooms');
+
+      lobbyListener = roomsRef.orderByChild('status').equalTo('waiting').on('value', (snapshot) => {
+        const lobbies = [];
+
+        snapshot.forEach(child => {
+          const room = child.val();
+          // Don't show rooms older than 1 hour
+          if (room.createdAt && Date.now() - room.createdAt < 60 * 60 * 1000) {
+            lobbies.push({
+              roomId: child.key,
+              host: room.host,
+              playerCount: Object.keys(room.players || {}).length,
+              createdAt: room.createdAt
+            });
+          }
+        });
+
+        // Sort by most recent first
+        lobbies.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        // Update UI
+        updateLobbyList(lobbies);
+      });
+    }
+
+    function stopLobbyListener() {
+      if (lobbyListener) {
+        db.ref('boggle/rooms').off('value', lobbyListener);
+        lobbyListener = null;
+      }
+    }
+
+    function updateLobbyList(lobbies) {
+      const listEl = document.getElementById('lobbyList');
+      if (!listEl) return;
+
+      if (lobbies.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-white/50 text-center py-4">
+            No open games right now.<br/>
+            <span class="text-sm">Host one to get started!</span>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = lobbies.map(lobby => `
+        <button
+          onclick="joinLobby('${lobby.roomId}')"
+          class="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 rounded-xl px-4 py-3 transition-colors"
+        >
+          <div class="text-left">
+            <span class="text-white font-medium">${lobby.host}'s Game</span>
+            <span class="text-white/50 text-sm ml-2">${lobby.playerCount}/8 players</span>
+          </div>
+          <span class="text-green-400 font-medium">Join →</span>
+        </button>
+      `).join('');
+    }
+
+    async function joinLobby(roomId) {
+      // Update UI to show joining state
+      const listEl = document.getElementById('lobbyList');
+      if (listEl) {
+        listEl.innerHTML = `<div class="text-white text-center py-4 animate-pulse">Joining...</div>`;
+      }
+
+      const result = await mpJoinRoom(roomId, state.playerName);
+
+      if (result.error) {
+        showMessage(result.error);
+        // Restart lobby listener to refresh the list
+        startLobbyListener();
+        return;
+      }
+
+      // Stop lobby listener since we're joining a room
+      stopLobbyListener();
+
+      state.multiplayerMode = true;
+      state.roomId = roomId;
+      state.isHost = false;
+      state.roomPlayers = result.players;
+      state.practiceCode = result.boardCode;
+      state.board = generateSeededBoard(result.boardCode);
+      state.roomStatus = 'waiting';
+      state.gameState = 'mp-lobby';
+
+      // Start real-time listener for room updates
+      startRoomListener();
+      render();
+    }
 
     async function mpCreateRoom(player, boardCode) {
       try {
@@ -1230,9 +1332,14 @@
       localStorage.setItem('boggle_player', name);
       state.gameState = 'mp-menu';
       render();
+      // Start listening for open lobbies
+      startLobbyListener();
     }
 
     async function hostGame() {
+      // Stop lobby listener since we're creating our own room
+      stopLobbyListener();
+
       // Update button to show loading state
       const btn = document.querySelector('button[onclick="hostGame()"]');
       if (btn) {
@@ -1700,33 +1807,24 @@
           <div class="min-h-screen flex items-center justify-center p-4">
             <div class="bg-white/10 backdrop-blur rounded-2xl p-8 max-w-sm w-full text-center">
               <h1 class="text-3xl font-bold text-white mb-2">Multiplayer</h1>
-              <p class="text-blue-100 mb-6">Playing as ${state.playerName}</p>
+              <p class="text-blue-100 mb-4">Playing as ${state.playerName}</p>
               <button
                 onclick="hostGame()"
-                class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors"
+                class="w-full px-6 py-3 bg-green-500 hover:bg-green-400 rounded-xl text-white text-lg font-bold transition-colors mb-4"
               >
                 Host Game
               </button>
-              <div class="my-4 text-white/50">— or —</div>
-              <input
-                type="text"
-                id="roomCodeInput"
-                placeholder="Enter room code"
-                maxlength="5"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                class="w-full px-4 py-3 rounded-xl text-lg text-center outline-none mb-3 font-mono"
-                onkeypress="if(event.key==='Enter')joinGame()"
-              />
+              <div class="bg-white/5 rounded-xl p-4 mb-4">
+                <p class="text-white/70 text-sm mb-3">Open Games</p>
+                <div id="lobbyList" class="space-y-2 max-h-48 overflow-y-auto">
+                  <div class="text-white/50 text-center py-4 animate-pulse">
+                    Loading...
+                  </div>
+                </div>
+              </div>
               <button
-                onclick="joinGame()"
-                class="w-full px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl text-white text-lg font-bold transition-colors"
-              >
-                Join Game
-              </button>
-              <button
-                onclick="state.gameState='login'; render();"
-                class="w-full px-6 py-3 mt-4 bg-white/20 hover:bg-white/30 rounded-xl text-white text-lg font-bold transition-colors"
+                onclick="stopLobbyListener(); state.gameState='login'; render();"
+                class="w-full px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white text-lg font-bold transition-colors"
               >
                 ← Back
               </button>
@@ -2182,7 +2280,8 @@
     // Multiplayer
     window.showMultiplayerMenu = showMultiplayerMenu;
     window.hostGame = hostGame;
-    window.joinGame = joinGame;
+    window.joinLobby = joinLobby;
+    window.stopLobbyListener = stopLobbyListener;
     window.mpHostStartGame = mpHostStartGame;
     window.leaveRoom = leaveRoom;
     window.copyRoomCode = copyRoomCode;
