@@ -931,6 +931,7 @@
       e.stopPropagation();
       state.isDragging = true;
       state.lastTouchTime = Date.now();
+      state.lastTileAddedTime = Date.now();
       state.selectedPath = [index];
       state.currentWord = state.board[index];
       state.pendingTile = null;
@@ -972,10 +973,14 @@
       const touchedIndex = getTileFromPoint(clientX, clientY);
 
       // Handle backtracking - if touching the previous tile
+      // Only allow backtracking after 150ms to prevent accidental removal during pivots
       if (state.selectedPath.length >= 2 && touchedIndex === state.selectedPath[state.selectedPath.length - 2]) {
-        state.selectedPath = state.selectedPath.slice(0, -1);
-        state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
-        updateTileVisuals();
+        if (Date.now() - state.lastTileAddedTime > 150) {
+          state.selectedPath = state.selectedPath.slice(0, -1);
+          state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+          state.lastTileAddedTime = Date.now();
+          updateTileVisuals();
+        }
         return;
       }
 
@@ -1023,6 +1028,7 @@
       if (!state.selectedPath.includes(index) && areAdjacent(state.selectedPath[state.selectedPath.length - 1], index)) {
         state.selectedPath.push(index);
         state.currentWord = state.selectedPath.map(i => state.board[i]).join('');
+        state.lastTileAddedTime = Date.now();
         updateTileVisuals();
       }
     }
