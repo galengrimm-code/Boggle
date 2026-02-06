@@ -1220,10 +1220,32 @@
       return possibleWords;
     }
 
+    // Validate name input - returns name if valid, null if not
+    function validateNameInput() {
+      const nameInput = document.getElementById('playerName');
+      const name = nameInput ? nameInput.value.trim() : '';
+
+      if (!name) {
+        // Highlight the input field
+        if (nameInput) {
+          nameInput.classList.add('ring-4', 'ring-red-400', 'ring-opacity-75');
+          nameInput.placeholder = 'Please enter your name!';
+          nameInput.focus();
+
+          // Remove highlight after animation
+          setTimeout(() => {
+            nameInput.classList.remove('ring-4', 'ring-red-400', 'ring-opacity-75');
+            nameInput.placeholder = 'Enter your name';
+          }, 2000);
+        }
+        return null;
+      }
+      return name;
+    }
+
     // Login
     async function handleLogin() {
-      const nameInput = document.getElementById('playerName');
-      const name = nameInput.value.trim();
+      const name = validateNameInput();
       if (!name) return;
 
       // Refresh date in case page was left open overnight
@@ -1318,9 +1340,9 @@
 
     // Start practice mode
     function startPracticeMode() {
-      const nameInput = document.getElementById('playerName');
-      const name = nameInput ? nameInput.value.trim() : 'player';
-      state.playerName = name || 'player';
+      const name = validateNameInput();
+      if (!name) return;
+      state.playerName = name;
       state.practiceMode = true;
       state.board = generateRandomBoard();
       state.gameState = 'ready';
@@ -1333,12 +1355,8 @@
     // ============================================
 
     function showMultiplayerMenu() {
-      const nameInput = document.getElementById('playerName');
-      const name = nameInput ? nameInput.value.trim() : '';
-      if (!name) {
-        showMessage('Enter your name first');
-        return;
-      }
+      const name = validateNameInput();
+      if (!name) return;
       state.playerName = name;
       localStorage.setItem('boggle_player', name);
       state.gameState = 'mp-menu';
